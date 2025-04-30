@@ -1029,7 +1029,19 @@ def create_model_from_config(config: Dict) -> nn.Module:
     )
     
     # Create model
-    model = CustomTransformerModel(hf_config)
+    model = TransformerModel(
+        vocab_size=config['tokenizer']['vocab_size'],
+        hidden_size=size_config['d_model'],
+        num_hidden_layers=size_config['n_layers'],
+        num_attention_heads=size_config['n_heads'],
+        intermediate_size=size_config['d_ff'],
+        hidden_dropout_prob=model_config['dropout'],
+        attention_probs_dropout_prob=model_config['dropout'],
+        max_position_embeddings=size_config['max_seq_length'],
+        initializer_range=model_config.get('initializer_range', 0.02),
+        use_rotary_embeddings=model_config['attention']['rotary_embedding'],
+        causal=model_config['attention']['causal']
+    )
     
     return model
 
