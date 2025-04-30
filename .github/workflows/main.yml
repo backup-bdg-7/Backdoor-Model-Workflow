@@ -157,7 +157,7 @@ jobs:
       - name: Download Datasets
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }} # Hugging Face token for gated datasets
-          # Pass all boolean inputs as environment variables
+          # Map each input to an environment variable
           NVIDIA_OPEN_CODE_REASONING: ${{ github.event.inputs.nvidia_OpenCodeReasoning }}
           OPEN_THOUGHTS_OPEN_THOUGHTS2_1M: ${{ github.event.inputs.open_thoughts_OpenThoughts2_1M }}
           ANTHROPIC_VALUES_IN_THE_WILD: ${{ github.event.inputs.Anthropic_values_in_the_wild }}
