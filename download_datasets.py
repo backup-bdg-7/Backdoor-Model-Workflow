@@ -4,35 +4,15 @@ import psutil
 from huggingface_hub import snapshot_download, HfApi
 from huggingface_hub.utils import HFValidationError
 
-# List of datasets to download
-datasets = [
-    "nvidia/OpenCodeReasoning",
-    "open-thoughts/OpenThoughts2-1M",
-    "Anthropic/values-in-the-wild",
-    "PrimeIntellect/verifiable-coding-problems",
-    "DeepNLP/Coding-Agent-GitHub-2025-Feb",
-    "aidando73/llama-coding-agent-evals",
-    "openai/openai_humaneval",
-    "HumanLLMs/Human-Like-DPO-Dataset",
-    "HuggingFaceH4/ultrachat_200k",
-    "Anthropic/hh-rlhf",
-    "xAI/TruthfulQA",
-    "Salesforce/dialogstudio",
-    "bigcode/the-stack",
-    "allenai/tool-augmented-dialogues",
-    "google-research/toolbench",
-    "codeparrot/github-code",
-    "luahub/lua-code-dataset",
-    "roblox/luau-code",
-    "swift-code/swift-repos",
-    "HuggingFaceH4/codeparrot-ds",
-    "nuprl/MultiPL-E",
-    "codeparrot/apps",
-    "HuggingFaceH4/python-codes-25k",
-    "HuggingFaceH4/instruction-dataset",
-    "allenai/dolma",
-    "openwebtext/openwebtext"
-]
+# Read the list of datasets from the environment variable
+datasets_input = os.getenv("DATASETS_TO_DOWNLOAD")
+if not datasets_input:
+    raise ValueError("No datasets specified. Set the DATASETS_TO_DOWNLOAD environment variable with a comma-separated list of datasets.")
+
+# Split the comma-separated string into a list and strip whitespace
+datasets = [dataset.strip() for dataset in datasets_input.split(",")]
+if not datasets:
+    raise ValueError("No valid datasets provided in DATASETS_TO_DOWNLOAD.")
 
 # Directory to store datasets
 base_dir = "datasets"
