@@ -3,7 +3,6 @@ name: Download Datasets and Store with Git LFS
 on:
   workflow_dispatch:
     inputs:
-      # Original datasets
       nvidia_OpenCodeReasoning:
         description: 'Download nvidia/OpenCodeReasoning'
         type: boolean
@@ -36,7 +35,6 @@ on:
         description: 'Download HumanLLMs/Human-Like-DPO-Dataset'
         type: boolean
         default: false
-      # Additional datasets
       HuggingFaceH4_ultrachat_200k:
         description: 'Download HuggingFaceH4/ultrachat_200k'
         type: boolean
@@ -115,24 +113,20 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Check out the repository
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      # Set up Git LFS
       - name: Setup Git LFS
         run: |
           git lfs install
           git lfs track "*.jsonl" "*.csv" "*.parquet" "*.txt"
 
-      # Free up disk space by removing unnecessary tools
       - name: Free Up Disk Space
         run: |
           echo "Disk space before cleanup:"
           df -h
-          # Remove unnecessary tools and files
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
@@ -142,22 +136,17 @@ jobs:
           echo "Disk space after cleanup:"
           df -h
 
-      # Set up Python
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      # Install dependencies
       - name: Install Dependencies
-        run: |
-          pip install huggingface_hub psutil
+        run: pip install huggingface_hub psutil
 
-      # Run the download script with selected datasets
       - name: Download Datasets
         env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }} # Hugging Face token for gated datasets
-          # Map each input to an environment variable
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           NVIDIA_OPEN_CODE_REASONING: ${{ github.event.inputs.nvidia_OpenCodeReasoning }}
           OPEN_THOUGHTS_OPEN_THOUGHTS2_1M: ${{ github.event.inputs.open_thoughts_OpenThoughts2_1M }}
           ANTHROPIC_VALUES_IN_THE_WILD: ${{ github.event.inputs.Anthropic_values_in_the_wild }}
@@ -184,18 +173,15 @@ jobs:
           HUGGINGFACEH4_INSTRUCTION_DATASET: ${{ github.event.inputs.HuggingFaceH4_instruction_dataset }}
           ALLENAI_DOLMA: ${{ github.event.inputs.allenai_dolma }}
           OPENWEBTEXT_OPENWEBTEXT: ${{ github.event.inputs.openwebtext_openwebtext }}
-        run: |
-          python download_datasets.py
-        continue-on-error: true  # Continue even if a dataset fails
+        run: python download_datasets.py
+        continue-on-error: true
 
-      # Monitor disk usage after download
       - name: Check Disk Usage
         run: |
           echo "Final disk usage:"
           df -h
           du -h datasets/ | sort -h
 
-      # Commit and push the datasets
       - name: Commit and Push Datasets
         run: |
           git config user.name "GitHub Action"
