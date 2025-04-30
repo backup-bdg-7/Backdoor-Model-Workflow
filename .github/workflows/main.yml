@@ -156,97 +156,21 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
-          # Define a list of datasets based on inputs
           datasets=()
-          if ${{ github.event.inputs.nvidia_OpenCodeReasoning }}; then
-            datasets+=("nvidia/OpenCodeReasoning")
-          fi
-          if ${{ github.event.inputs.open_thoughts_OpenThoughts2_1M }}; then
-            datasets+=("open-thoughts/OpenThoughts2-1M")
-          fi
-          if ${{ github.event.inputs.Anthropic_values_in_the_wild }}; then
-            datasets+=("Anthropic/values-in-the-wild")
-          fi
-          if ${{ github.event.inputs.PrimeIntellect_verifiable_coding_problems }}; then
-            datasets+=("PrimeIntellect/verifiable-coding-problems")
-          fi
-          if ${{ github.event.inputs.DeepNLP_Coding_Agent_GitHub_2025_Feb }}; then
-            datasets+=("DeepNLP/Coding-Agent-GitHub-2025-Feb")
-          fi
-          if ${{ github.event.inputs.aidando73_llama_coding_agent_evals }}; then
-            datasets+=("aidando73/llama-coding-agent-evals")
-          fi
-          if ${{ github.event.inputs.openai_openai_humaneval }}; then
-            datasets+=("openai/openai_humaneval")
-          fi
-          if ${{ github.event.inputs.HumanLLMs_Human_Like_DPO_Dataset }}; then
-            datasets+=("HumanLLMs/Human-Like-DPO-Dataset")
-          fi
-          if ${{ github.event.inputs.HuggingFaceH4_ultrachat_200k }}; then
-            datasets+=("HuggingFaceH4/ultrachat_200k")
-          fi
-          if ${{ github.event.inputs.Anthropic_hh_rlhf }}; then
-            datasets+=("Anthropic/hh-rlhf")
-          fi
-          if ${{ github.event.inputs.xAI_TruthfulQA }}; then
-            datasets+=("xAI/TruthfulQA")
-          fi
-          if ${{ github.event.inputs.Salesforce_dialogstudio }}; then
-            datasets+=("Salesforce/dialogstudio")
-          fi
-          if ${{ github.event.inputs.bigcode_the_stack }}; then
-            datasets+=("bigcode/the-stack")
-          fi
-          if ${{ github.event.inputs.allenai_tool_augmented_dialogues }}; then
-            datasets+=("allenai/tool-augmented-dialogues")
-          fi
-          if ${{ github.event.inputs.google_research_toolbench }}; then
-            datasets+=("google-research/toolbench")
-          fi
-          if ${{ github.event.inputs.codeparrot_github_code }}; then
-            datasets+=("codeparrot/github-code")
-          fi
-          if ${{ github.event.inputs.luahub_lua_code_dataset }}; then
-            datasets+=("luahub/lua-code-dataset")
-          fi
-          if ${{ github.event.inputs.roblox_luau_code }}; then
-            datasets+=("roblox/luau-code")
-          fi
-          if ${{ github.event.inputs.swift_code_swift_repos }}; then
-            datasets+=("swift-code/swift-repos")
-          fi
-          if ${{ github.event.inputs.HuggingFaceH4_codeparrot_ds }}; then
-            datasets+=("HuggingFaceH4/codeparrot-ds")
-          fi
-          if ${{ github.event.inputs.nuprl_MultiPL_E }}; then
-            datasets+=("nuprl/MultiPL-E")
-          fi
-          if ${{ github.event.inputs.codeparrot_apps }}; then
-            datasets+=("codeparrot/apps")
-          fi
-          if ${{ github.event.inputs.HuggingFaceH4_python_codes_25k }}; then
-            datasets+=("HuggingFaceH4/python-codes-25k")
-          fi
-          if ${{ github.event.inputs.HuggingFaceH4_instruction_dataset }}; then
-            datasets+=("HuggingFaceH4/instruction-dataset")
-          fi
-          if ${{ github.event.inputs.allenai_dolma }}; then
-            datasets+=("allenai/dolma")
-          fi
-          if ${{ github.event.inputs.openwebtext_openwebtext }}; then
-            datasets+=("openwebtext/openwebtext")
-          fi
+          # Dynamically add datasets based on inputs
+          for input in $(env | grep 'github.event.inputs' | cut -d'=' -f1); do
+            if [ "${!input}" == "true" ]; then
+              dataset_name=$(echo $input | sed 's/github.event.inputs.//g' | tr '_' '-' | sed 's/-/./g')
+              datasets+=("$dataset_name")
+            fi
+          done
 
-          # Check if any datasets were selected
           if [ ${#datasets[@]} -eq 0 ]; then
             echo "No datasets selected for download. Exiting."
             exit 0
           fi
 
-          # Log selected datasets
-          echo "Selected datasets for download: ${datasets[@]}"
-
-          # Loop through and download each dataset
+          echo "Selected datasets: ${datasets[@]}"
           for dataset in "${datasets[@]}"; do
             echo "Downloading dataset: $dataset"
             python download_datasets.py --dataset "$dataset" || echo "Failed to download $dataset"
@@ -264,9 +188,12 @@ jobs:
         run: |
           git config user.name "GitHub Action"
           git config user.email "action@github.com"
-          git add datasets/
-          git add .gitattributes
-          git commit -m "Add downloaded datasets with Git LFS" || echo "No changes to commit"
-          git push
+          if ! git diff --quiet; then
+            git add datasets/ .gitattributes
+            git commit -m "Add downloaded datasets with Git LFS"
+            git push
+          else
+            echo "No changes to commit."
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
