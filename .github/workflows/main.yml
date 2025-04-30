@@ -1,0 +1,54 @@
+name: Download Datasets and Store with Git LFS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch: # Allows manual triggering
+
+jobs:
+  download-datasets:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      # Set up Git LFS
+      - name: Setup Git LFS
+        run: |
+          git lfs install
+          git lfs track "*.jsonl" "*.csv" "*.parquet" "*.txt"
+
+      # Set up Python
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      # Install dependencies
+      - name: Install Dependencies
+        run: |
+          pip install huggingface_hub
+
+      # Run the download script
+      - name: Download Datasets
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }} # Optional: Hugging Face token for gated datasets
+        run: |
+          python download_datasets.py
+
+      # Commit and push the datasets
+      - name: Commit and Push Datasets
+        run: |
+          git config user.name "GitHub Action"
+          git config user.email "action@github.com"
+          git add datasets/
+          git add .gitattributes
+          git commit -m "Add downloaded datasets with Git LFS"
+          git push
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
