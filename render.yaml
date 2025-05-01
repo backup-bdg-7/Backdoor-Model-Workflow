@@ -75,4 +75,4 @@ services:
         fromService:
           name: model-trainer-api
           type: web
-          property: url
+          property: hostport
