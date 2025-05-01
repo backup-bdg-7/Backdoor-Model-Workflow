@@ -7,6 +7,7 @@ services:
   - type: web
     name: model-trainer-api
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT app.api.main:app
     healthCheckPath: /api/health
@@ -41,6 +42,7 @@ services:
   - type: web
     name: model-trainer-monitor
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.services.monitor:app
     healthCheckPath: /monitor/health
@@ -58,6 +60,7 @@ services:
   - type: web
     name: model-trainer-frontend
     env: static
+    plan: free
     buildCommand: cd app/frontend && npm install && npm run build
     staticPublishPath: ./app/frontend/build
     envVars:
