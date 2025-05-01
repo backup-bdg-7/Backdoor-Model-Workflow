@@ -34,15 +34,29 @@ from src.model.compatibility_wrapper import CompatibilityWrapper
 from src.model.training import Trainer, TrainingArguments
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(os.path.join(STORAGE_DIR, 'logs', 'training_worker.log'))
-    ]
-)
-logger = logging.getLogger(__name__)
+# On Render.com free tier, we only use stream handler to avoid issues with ephemeral storage
+if os.environ.get('RENDER_SERVICE_TYPE', ''):
+    # Running on Render.com - use only stream handler
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Running on Render.com - using stream logging only (no log files)")
+else:
+    # Local development - can use file handler
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(os.path.join(STORAGE_DIR, 'logs', 'training_worker.log'))
+        ]
+    )
+    logger = logging.getLogger(__name__)
 
 class TrainingWorker:
     """

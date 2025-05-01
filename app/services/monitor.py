@@ -28,15 +28,29 @@ from app.config.settings import (
 )
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(os.path.join(STORAGE_DIR, 'logs', 'monitor.log'))
-    ]
-)
-logger = logging.getLogger(__name__)
+# On Render.com free tier, we only use stream handler to avoid issues with ephemeral storage
+if os.environ.get('RENDER_SERVICE_TYPE', ''):
+    # Running on Render.com - use only stream handler
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Running on Render.com - using stream logging only (no log files)")
+else:
+    # Local development - can use file handler
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(os.path.join(STORAGE_DIR, 'logs', 'monitor.log'))
+        ]
+    )
+    logger = logging.getLogger(__name__)
 
 # Initialize FastAPI application
 app = FastAPI(
@@ -82,6 +96,14 @@ os.makedirs(metrics_dir, exist_ok=True)
 active_connections: Dict[str, List[WebSocket]] = {}
 metrics_cache: Dict[str, Dict[str, Any]] = {}
 start_time = time.time()
+
+# Detect if running on Render free tier
+is_render_free_tier = os.environ.get('RENDER_SERVICE_TYPE', '') != ''
+if is_render_free_tier:
+    # On Render.com free tier, reduce retention period and use memory-centric approach
+    logger.info("Running on Render.com free tier - using memory-centric metrics storage")
+    MONITOR_RETENTION_PERIOD = min(MONITOR_RETENTION_PERIOD, 1)  # Maximum 1 day retention on free tier
+    logger.info(f"Metrics retention period: {MONITOR_RETENTION_PERIOD} day(s)")
 
 # Background cleanup task
 def cleanup_old_metrics():

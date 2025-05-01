@@ -22,8 +22,25 @@ from app.utils.task_queue import TaskQueue
 from app.utils.response_utils import success_response, error_response
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# On Render.com free tier, we only use stream handler to avoid issues with ephemeral storage
+if os.environ.get('RENDER_SERVICE_TYPE', ''):
+    # Running on Render.com - use only stream handler
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler()
+        ]
+    )
+    logger = logging.getLogger(__name__)
+    logger.info("Running on Render.com - using stream logging only (no log files)")
+else:
+    # Local development - can use file and stream handlers
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    logger = logging.getLogger(__name__)
 
 # Initialize Flask application
 app = Flask(__name__)

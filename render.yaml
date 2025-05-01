@@ -1,11 +1,13 @@
 # Render.yaml configuration for multi-service deployment
-# This configuration creates multiple services to efficiently manage memory on Render.com
+# This configuration is optimized for Render.com's free tier
+# Free tier has ephemeral storage, so we use /tmp directory
 
 services:
   # API Service - Handles API requests and coordinates other services
   - type: web
     name: model-trainer-api
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT app.api.main:app
     healthCheckPath: /api/health
@@ -13,40 +15,34 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: MAX_MEMORY_MB
-        value: 512
+        value: 400  # Stay within free tier limits
       - key: STORAGE_DIR
-        value: /tmp/model-trainer
+        value: /tmp
       - key: PYTHONUNBUFFERED
         value: true
-    disk:
-      name: training-data
-      mountPath: /tmp/model-trainer
-      sizeGB: 1
 
   # Training Service - Dedicated to model training
   - type: worker
     name: model-trainer-training
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python -m app.services.training_worker
     envVars:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: MAX_MEMORY_MB
-        value: 1024
+        value: 450  # Stay within free tier limits
       - key: STORAGE_DIR
-        value: /tmp/model-trainer
+        value: /tmp
       - key: PYTHONUNBUFFERED
         value: true
-    disk:
-      name: training-data
-      mountPath: /tmp/model-trainer
-      sizeGB: 1
 
   # Monitoring Service - Tracks and visualizes training progress
   - type: web
     name: model-trainer-monitor
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.services.monitor:app
     healthCheckPath: /monitor/health
@@ -54,20 +50,16 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: MAX_MEMORY_MB
-        value: 256
+        value: 250  # Stay within free tier limits
       - key: STORAGE_DIR
-        value: /tmp/model-trainer
+        value: /tmp
       - key: PYTHONUNBUFFERED
         value: true
-    disk:
-      name: training-data
-      mountPath: /tmp/model-trainer
-      sizeGB: 1
 
   # Frontend Service - Serves the web UI for interaction
-  - type: web
+  - type: static
     name: model-trainer-frontend
-    env: static
+    plan: free
     buildCommand: cd app/frontend && npm install && npm run build
     staticPublishPath: ./app/frontend/build
     envVars:
