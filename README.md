@@ -226,24 +226,10 @@ This workflow is designed to create a top-level AI model capable of handling div
 
 ## Getting Started
 
-1. Clone this repository to your Kaggle notebook
-2. Configure the `config.yaml` file with your dataset preferences and model configuration
-3. Run the notebooks in sequence:
-   - `01_dataset_preparation.ipynb`
-   - `02_model_training.ipynb`
-   - `03_evaluation.ipynb`
-   - `04_optimization.ipynb`
-   - `05_deployment.ipynb`
 
 ## Directory Structure
 
 ```
-├── notebooks/                  # Jupyter notebooks for interactive workflow
-│   ├── 01_dataset_preparation.ipynb
-│   ├── 02_model_training.ipynb
-│   ├── 03_evaluation.ipynb
-│   ├── 04_optimization.ipynb
-│   └── 05_deployment.ipynb
 ├── src/                        # Source code for the workflow
 │   ├── data/                   # Dataset handling code
 │   │   ├── loaders.py          # Dataset loading utilities
@@ -260,22 +246,11 @@ This workflow is designed to create a top-level AI model capable of handling div
 │   ├── evaluation/             # Model evaluation code
 │   │   ├── evaluators.py       # Task-specific evaluators
 │   │   ├── benchmarks.py       # Benchmark suites
-│   │   └── analysis.py         # Performance analysis utilities
-│   └── deployment/             # Deployment utilities
-│       ├── flask_export.py     # Flask API export utilities
-│       ├── coreml_export.py    # Core ML conversion utilities
-│       └── optimization.py     # Model optimization utilities
+│   │   └── analysis.py         # Performance analysis utilitiess
 ├── configs/                    # Configuration files
 │   ├── model_configs/          # Model architecture configurations
 │   ├── training_configs/       # Training hyperparameters
 │   └── dataset_configs/        # Dataset configurations
-├── scripts/                    # Utility scripts
-│   ├── setup_environment.sh    # Environment setup script
-│   ├── download_datasets.py    # Dataset download script
-│   └── monitor_resources.py    # Resource monitoring script
-├── requirements.txt            # Python dependencies
-├── README.md                   # Project documentation
-└── LICENSE                     # License information
 ```
 
 ## License
