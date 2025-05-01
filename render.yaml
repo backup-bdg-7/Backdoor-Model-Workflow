@@ -1,8 +1,9 @@
 services:
-  # API Service - Handles API requests and coordinates other services
+  # API Service - Handles API requests and background training tasks
   - type: web
     name: model-trainer-api
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -b 0.0.0.0:$PORT app.api.main:app
     healthCheckPath: /api/health
@@ -10,24 +11,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: MAX_MEMORY_MB
-        value: 400
-      - key: STORAGE_DIR
-        value: /tmp
-      - key: PYTHONUNBUFFERED
-        value: true
-
-  # Training Service - Dedicated to model training
-  - type: worker
-    name: model-trainer-training
-    env: python
-    plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: python -m app.services.training_worker
-    envVars:
-      - key: PYTHON_VERSION
-        value: 3.9.16
-      - key: MAX_MEMORY_MB
-        value: 400  # Reduced to stay within free tier limits
+        value: 350  # Conservative to stay under 512 MB
       - key: STORAGE_DIR
         value: /tmp
       - key: PYTHONUNBUFFERED
@@ -37,6 +21,7 @@ services:
   - type: web
     name: model-trainer-monitor
     env: python
+    plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn -w 1 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:$PORT app.services.monitor:app
     healthCheckPath: /monitor/health
@@ -44,7 +29,7 @@ services:
       - key: PYTHON_VERSION
         value: 3.9.16
       - key: MAX_MEMORY_MB
-        value: 250
+        value: 200  # Conservative to stay under 512 MB
       - key: STORAGE_DIR
         value: /tmp
       - key: PYTHONUNBUFFERED
@@ -54,6 +39,7 @@ services:
   - type: web
     name: model-trainer-frontend
     env: static
+    plan: free
     buildCommand: cd app/frontend && npm install && npm run build
     staticPublishPath: app/frontend/build
     envVars:
