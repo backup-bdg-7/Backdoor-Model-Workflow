@@ -16,15 +16,20 @@ logger = logging.getLogger(__name__)
 
 # Base paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-STORAGE_DIR = os.environ.get('STORAGE_DIR', '/tmp/model-trainer')
-MAX_MEMORY_MB = int(os.environ.get('MAX_MEMORY_MB', '1024'))
+STORAGE_DIR = os.environ.get('STORAGE_DIR', '/tmp')
+MAX_MEMORY_MB = int(os.environ.get('MAX_MEMORY_MB', '450'))  # Default for free tier
+IS_FREE_TIER = os.environ.get('RENDER_SERVICE_TYPE', '') != ''  # Detect Render.com environment
 
-# Create storage directory if it doesn't exist
+# Create necessary directories - using ephemeral storage (/tmp) for Render.com's free tier
 os.makedirs(STORAGE_DIR, exist_ok=True)
 os.makedirs(os.path.join(STORAGE_DIR, 'models'), exist_ok=True)
 os.makedirs(os.path.join(STORAGE_DIR, 'datasets'), exist_ok=True)
 os.makedirs(os.path.join(STORAGE_DIR, 'logs'), exist_ok=True)
 os.makedirs(os.path.join(STORAGE_DIR, 'exports'), exist_ok=True)
+
+# Log storage information
+logger.info(f"Using storage directory: {STORAGE_DIR} (ephemeral on free tier)")
+logger.info(f"Memory limit: {MAX_MEMORY_MB}MB")
 
 # API settings
 API_TITLE = "Model Trainer API"
@@ -32,22 +37,42 @@ API_DESCRIPTION = "API for training and exporting AI models"
 API_VERSION = "1.0.0"
 API_PREFIX = "/api"
 
-# Training settings
-TRAINING_CONFIG = {
-    "max_epochs": 10,
-    "batch_size": 8,
-    "learning_rate": 3e-5,
-    "warmup_steps": 500,
-    "weight_decay": 0.01,
-    "gradient_accumulation_steps": 4,
-    "gradient_checkpointing": True,
-    "mixed_precision": "fp16",
-    "eval_steps": 500,
-    "save_steps": 1000,
-    "memory_limit_mb": MAX_MEMORY_MB,
-    "max_train_samples": 50000,  # Limit training samples to manage memory
-    "max_validation_samples": 1000,  # Limit validation samples
-}
+# Training settings - adjust based on environment
+if IS_FREE_TIER:
+    # More conservative settings for Render.com free tier
+    TRAINING_CONFIG = {
+        "max_epochs": 3,
+        "batch_size": 4,
+        "learning_rate": 3e-5,
+        "warmup_steps": 100,
+        "weight_decay": 0.01,
+        "gradient_accumulation_steps": 8,
+        "gradient_checkpointing": True,
+        "mixed_precision": "fp16",
+        "eval_steps": 100,
+        "save_steps": 500,
+        "memory_limit_mb": MAX_MEMORY_MB,
+        "max_train_samples": 5000,  # Drastically limit samples for free tier
+        "max_validation_samples": 500,  # Limit validation samples
+    }
+    logger.info("Using conservative training settings for Render.com free tier")
+else:
+    # Standard settings for normal environments
+    TRAINING_CONFIG = {
+        "max_epochs": 10,
+        "batch_size": 8,
+        "learning_rate": 3e-5,
+        "warmup_steps": 500,
+        "weight_decay": 0.01,
+        "gradient_accumulation_steps": 4,
+        "gradient_checkpointing": True,
+        "mixed_precision": "fp16",
+        "eval_steps": 500,
+        "save_steps": 1000,
+        "memory_limit_mb": MAX_MEMORY_MB,
+        "max_train_samples": 50000,  # Limit training samples to manage memory
+        "max_validation_samples": 1000,  # Limit validation samples
+    }
 
 # Monitoring settings
 MONITOR_UPDATE_INTERVAL = 5  # seconds
