@@ -1293,47 +1293,114 @@ class CustomTransformerModel(PreTrainedModel):
 # Factory function to create model from config
 def create_model_from_config(config: Dict) -> nn.Module:
     """
-    Create a model from configuration.
+    Create a model from configuration, supporting all modern architecture features.
     
     Args:
         config: Model configuration
         
     Returns:
-        Initialized model
+        Initialized model with the requested architecture
     """
     # Extract model configuration
     model_config = config['model']
     size = model_config['size']
     size_config = model_config['sizes'][size]
     
-    # Create Hugging Face compatible config
-    hf_config = ModelConfig(
-        vocab_size=config['tokenizer']['vocab_size'],
-        max_position_embeddings=size_config['max_seq_length'],
-        hidden_size=size_config['d_model'],
-        num_hidden_layers=size_config['n_layers'],
-        num_attention_heads=size_config['n_heads'],
-        intermediate_size=size_config['d_ff'],
-        hidden_dropout_prob=model_config['dropout'],
-        attention_probs_dropout_prob=model_config['dropout'],
-        use_rotary_embeddings=model_config['attention']['rotary_embedding'],
-        causal=model_config['attention']['causal']
-    )
+    # Extract architecture configuration
+    architecture_config = model_config.get('architecture', {})
     
-    # Create model
-    model = TransformerModel(
-        vocab_size=config['tokenizer']['vocab_size'],
-        hidden_size=size_config['d_model'],
-        num_hidden_layers=size_config['n_layers'],
-        num_attention_heads=size_config['n_heads'],
-        intermediate_size=size_config['d_ff'],
-        hidden_dropout_prob=model_config['dropout'],
-        attention_probs_dropout_prob=model_config['dropout'],
-        max_position_embeddings=size_config['max_seq_length'],
-        initializer_range=model_config.get('initializer_range', 0.02),
-        use_rotary_embeddings=model_config['attention']['rotary_embedding'],
-        causal=model_config['attention']['causal']
-    )
+    # Create advanced ModelConfig with all modern features
+    model_config_params = {
+        # Basic model parameters
+        "vocab_size": config['tokenizer']['vocab_size'],
+        "max_position_embeddings": size_config['max_seq_length'],
+        "hidden_size": size_config['d_model'],
+        "num_hidden_layers": size_config['n_layers'],
+        "num_attention_heads": size_config['n_heads'],
+        "intermediate_size": size_config['d_ff'],
+        "hidden_dropout_prob": model_config['dropout'],
+        "attention_probs_dropout_prob": model_config['dropout'],
+        "initializer_range": model_config.get('initializer_range', 0.02),
+        "layer_norm_eps": model_config.get('layer_norm_eps', 1e-5),
+        
+        # Position embeddings - default to rotary if not specified
+        "position_embedding_type": architecture_config.get('position_embeddings', 
+                                   'rotary' if model_config['attention'].get('rotary_embedding', True) else 'learned'),
+        
+        # Attention settings
+        "causal": model_config['attention'].get('causal', True),
+        "attention_type": architecture_config.get('attention_type', 'mha'),  # mha, mqa, gqa
+        "kv_heads": architecture_config.get('kv_heads', None),  # For GQA, number of KV heads
+        
+        # Normalization and activation
+        "norm_type": architecture_config.get('norm_type', 'layer_norm'),  # layer_norm, rms_norm
+        "normalization_strategy": architecture_config.get('normalization_strategy', 'pre_norm'),  # pre_norm, post_norm
+        "activation_function": architecture_config.get('activation_function', 'gelu'),
+        
+        # Advanced features
+        "ffn_type": architecture_config.get('ffn_type', 'mlp'),  # mlp, swiglu, geglu
+        "use_bias": architecture_config.get('use_bias', True),
+        "drop_path_rate": architecture_config.get('drop_path_rate', 0.0),
+        
+        # Performance optimizations
+        "use_flash_attention": architecture_config.get('use_flash_attention', False),
+        "use_cache": model_config.get('use_cache', True),
+        "tie_word_embeddings": model_config.get('tie_word_embeddings', True),
+        
+        # Quantization
+        "quantization": model_config.get('quantization', None)
+    }
+    
+    # Create ModelConfig
+    hf_config = ModelConfig(**model_config_params)
+    
+    # Create TransformerModel with all modern features using our enhanced implementation
+    model = TransformerModel(config=hf_config)
+    
+    # Apply additional model initializations if specified 
+    if 'initialization' in architecture_config:
+        init_config = architecture_config['initialization']
+        method = init_config.get('method', 'default')
+        
+        if method == 'normal':
+            # Normal initialization with specified params
+            std = init_config.get('std', 0.02)
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    module.weight.data.normal_(mean=0.0, std=std)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+        
+        elif method == 'xavier_uniform':
+            # Xavier uniform initialization
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.xavier_uniform_(module.weight.data)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+        
+        elif method == 'kaiming_normal':
+            # Kaiming normal initialization
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.kaiming_normal_(module.weight.data, nonlinearity='relu')
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+    
+    # Apply gradient checkpointing if requested
+    if model_config.get('gradient_checkpointing', False):
+        model.gradient_checkpointing_enable()
+    
+    # Apply pytorch 2.0 compilation if requested
+    if 'compile' in model_config and model_config['compile'].get('enabled', False):
+        try:
+            import torch._dynamo
+            mode = model_config['compile'].get('mode', 'default')
+            
+            logger.info(f"Applying torch.compile with mode: {mode}")
+            model = torch.compile(model, mode=mode)
+        except (ImportError, AttributeError):
+            logger.warning("PyTorch 2.0+ compilation not available. Skipping model compilation.")
     
     return model
 

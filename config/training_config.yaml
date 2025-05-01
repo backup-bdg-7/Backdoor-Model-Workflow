@@ -1,4 +1,4 @@
-# Configuration for AI model training workflow
+# Configuration for AI model training workflow with modern architecture and training features
 
 # Project information
 project_name: "transformer_model_training"
@@ -38,6 +38,62 @@ model:
   attention:
     causal: true
     rotary_embedding: true
+  
+  # Advanced architecture settings
+  architecture:
+    # Position embeddings: "rotary", "alibi", "learned", "none"
+    position_embeddings: "rotary"
+    
+    # Attention mechanism: "mha" (Multi-Head), "mqa" (Multi-Query), "gqa" (Grouped-Query)
+    attention_type: "mha"
+    
+    # For GQA, number of KV heads (if None, defaults to num_heads/8)
+    kv_heads: null
+    
+    # Normalization: "layer_norm" or "rms_norm"
+    norm_type: "layer_norm"
+    
+    # Normalization strategy: "pre_norm" or "post_norm"
+    normalization_strategy: "pre_norm"
+    
+    # Activation function: "gelu", "silu", "relu", etc.
+    activation_function: "gelu"
+    
+    # Feed-forward network type: "mlp", "swiglu", "geglu", "gated"
+    ffn_type: "mlp"
+    
+    # Whether to use bias in linear layers
+    use_bias: true
+    
+    # Stochastic depth (drop path) probability
+    drop_path_rate: 0.0
+    
+    # Performance optimizations
+    use_flash_attention: false
+    
+    # Initialization method: "default", "normal", "xavier_uniform", "kaiming_normal"
+    initialization:
+      method: "default"
+      std: 0.02
+  
+  # PyTorch 2.0+ compilation
+  compile:
+    enabled: false
+    mode: "default"  # "default", "reduce-overhead", "max-autotune"
+  
+  # Gradient checkpointing for memory efficiency
+  gradient_checkpointing: false
+  
+  # Model quantization
+  quantization:
+    enabled: false
+    method: "int8"  # "int8", "int4", "fp16", "nf4", "gptq", "awq"
+    bits: 8
+    compute_dtype: "float16"
+    quantize_weights: true
+    quantize_kv_cache: false
+    quantize_activations: false
+    double_quant: false
 
 # Tokenizer configuration
 tokenizer:
@@ -50,9 +106,74 @@ tokenizer:
   add_bos_token: true
   add_eos_token: true
 
+# Parameter-Efficient Fine-Tuning (PEFT) configuration
+peft:
+  enabled: false
+  method: "lora"  # Options: lora, qlora, adapter, prefix_tuning
+  
+  # LoRA configuration
+  lora:
+    r: 16  # Rank of the low-rank matrices
+    alpha: 32  # Scaling factor
+    dropout: 0.05  # Dropout probability for LoRA layers
+    target_modules:  # Modules to apply LoRA to
+      - "q_proj"
+      - "k_proj" 
+      - "v_proj"
+      - "o_proj"
+      - "gate_proj"
+      - "up_proj" 
+      - "down_proj"
+    bias: "none"  # Options: none, all, lora_only
+    use_rslora: false  # Whether to use rank-stabilized LoRA
+  
+  # QLoRA configuration (quantized LoRA)
+  qlora:
+    r: 16
+    alpha: 32
+    dropout: 0.05
+    target_modules:
+      - "q_proj"
+      - "k_proj" 
+      - "v_proj"
+      - "o_proj"
+      - "gate_proj"
+      - "up_proj" 
+      - "down_proj"
+    bias: "none"
+    use_rslora: false
+    bits: 4  # Quantization bits (4 or 8)
+    double_quant: true  # Whether to use double quantization
+    bnb_blocksize: 64  # bitsandbytes block size
+    bnb_compute_dtype: "float16"  # bitsandbytes compute dtype
+  
+  # Adapter configuration
+  adapter:
+    dim: 64  # Bottleneck dimension
+    scaling: 1.0  # Scaling factor
+    use_gate: true  # Whether to use gating
+    norm_position: "pre"  # Position of normalization ('pre', 'post', 'both', 'none')
+    adapter_dropout: 0.0  # Dropout rate
+    target_modules:
+      - "output"
+      - "attention.output"
+      - "ffn.output"
+    norm_type: "layer_norm"  # Type of normalization
+    init_scale: 1.0e-3  # Initialization scale
+  
+  # Prefix Tuning configuration
+  prefix_tuning:
+    prefix_length: 20  # Length of the prefix
+    num_virtual_tokens: 20  # Number of virtual tokens
+    prefix_projection: false  # Whether to use prefix projection
+    dropout: 0.0  # Dropout probability
+    prefix_dropout: 0.0  # Dropout probability for prefix
+    target_modules:
+      - "attn"
+
 # Training configuration
 training:
-  active_stage: "pretrain"  # Options: pretrain, finetune, distillation
+  active_stage: "pretrain"  # Options: pretrain, lora_finetune, qlora_finetune, distillation
   stages:
     - name: "pretrain"
       epochs: 1
@@ -170,8 +291,11 @@ training:
         min: 1.0e-6
         schedule: "cosine"  # Options: linear, cosine, constant
         warmup_steps: 1000
+      
+      # Use full-parameter training for pretraining
+      peft_method: null
     
-    - name: "finetune"
+    - name: "lora_finetune"
       epochs: 2
       datasets:
         - name: "HuggingFaceH4/ultrachat_200k"
@@ -191,6 +315,77 @@ training:
         min: 1.0e-6
         schedule: "linear"
         warmup_steps: 500
+      
+      # Use LoRA for efficient fine-tuning
+      peft_method: "lora"
+      peft_config:
+        r: 16
+        alpha: 32
+        dropout: 0.05
+        target_modules:
+          - "q_proj"
+          - "k_proj" 
+          - "v_proj"
+          - "o_proj"
+    
+    - name: "qlora_finetune"
+      epochs: 2
+      datasets:
+        - name: "open-orca/OpenOrca"
+          split: "train"
+          streaming: true
+          max_samples: 50000
+        - name: "HuggingFaceH4/ultrachat_200k"
+          split: "train"
+          streaming: true
+          max_samples: 50000
+      learning_rate:
+        initial: 1.0e-4
+        min: 1.0e-6
+        schedule: "cosine"
+        warmup_steps: 100
+      
+      # Use QLoRA for memory-efficient fine-tuning
+      peft_method: "qlora"
+      peft_config:
+        r: 16
+        alpha: 32
+        dropout: 0.05
+        bits: 4
+        double_quant: true
+        target_modules:
+          - "q_proj"
+          - "k_proj" 
+          - "v_proj"
+          - "o_proj"
+          - "gate_proj"
+          - "up_proj" 
+          - "down_proj"
+    
+    - name: "adapter_finetune"
+      epochs: 2
+      datasets:
+        - name: "HuggingFaceH4/ultrachat_200k"
+          split: "train"
+          streaming: true
+          max_samples: 50000
+      learning_rate:
+        initial: 3.0e-4
+        min: 1.0e-6
+        schedule: "linear"
+        warmup_steps: 100
+      
+      # Use Adapters for efficient fine-tuning
+      peft_method: "adapter"
+      peft_config:
+        dim: 64
+        scaling: 1.0
+        use_gate: true
+        target_modules:
+          - "output"
+          - "attention.output"
+          - "ffn.output"
+    
     - name: "distillation"
       epochs: 2
       datasets:
@@ -207,6 +402,9 @@ training:
       teacher_model: "gpt2-medium"
       temperature: 2.0
       alpha: 0.5  # Weight for distillation loss
+      
+      # Optionally use LoRA for distillation
+      peft_method: null
   
   # Optimizer settings
   optimizer:
@@ -227,6 +425,11 @@ training:
     save_steps: 1000
     keep_last_n: 3
     save_optimizer_state: true
+    merge_lora_weights: false  # Whether to merge LoRA weights at the end
+    export_formats:  # Export formats for final model
+      - "onnx"
+      - "torchscript"
+      - "safetensors"
   
   # Evaluation settings
   evaluation:
@@ -239,12 +442,44 @@ training:
 
 # Distributed training configuration
 distributed_training:
+  # Basic distributed settings
   backend: "nccl"  # Options: nccl, gloo
-  use_deepspeed: true
-  zero_stage: 2  # Options: 0, 1, 2, 3
-  offload_optimizer: false
-  offload_param: false
+  use_multi_gpu: true
+  strategy: "deepspeed"  # Options: deepspeed, fsdp, ddp
   gradient_accumulation_steps: 1
+  
+  # DeepSpeed configuration
+  deepspeed:
+    enabled: true
+    zero_stage: 2  # Options: 0, 1, 2, 3
+    offload_optimizer: false
+    offload_param: false
+    pin_memory: true
+    contiguous_gradients: true
+    overlap_comm: true
+    allgather_bucket_size: 5e8
+    reduce_bucket_size: 5e8
+  
+  # FSDP configuration (PyTorch native sharding)
+  fsdp:
+    enabled: false
+    sharding_strategy: "full"  # Options: full, hybrid, shard_grad_op
+    mixed_precision: "fp16"  # Options: fp16, bf16, tf32
+    cpu_offload: false
+    auto_wrap_policy: "transformer"  # Options: transformer, size_based
+    min_num_params: 1000000  # For size_based policy
+    transformer_layer_cls_names:
+      - "TransformerBlock"
+      - "DecoderLayer"
+      - "GPTBlock"
+      - "LLaMABlock"
+    backward_prefetch: "backward_pre"  # Options: backward_pre, backward_post
+    forward_prefetch: false
+    activation_checkpointing: false
+    limit_all_gathers: false
+    use_orig_params: true
+    sync_module_states: false
+    state_dict_type: "full"  # Options: full, sharded, local
 
 # Data processing configuration
 data_processing:
@@ -301,19 +536,95 @@ hyperparameter_optimization:
 model_optimization:
   quantization:
     enabled: false
-    method: "dynamic"  # Options: dynamic, static, int8, int4
+    method: "dynamic"  # Options: dynamic, static, int8, int4, gptq, awq
     dtype: "int8"
+    bits: 8  # 8, 4, 3, etc.
   
   pruning:
     enabled: false
-    method: "l1_unstructured"
+    method: "l1_unstructured"  # Options: l1_unstructured, magnitude, structured
     amount: 0.3
+    importance_scores: "weight"  # Options: weight, activation, gradient
+    sparsity_pattern: "unstructured"  # Options: unstructured, n:m
+    n_m_ratio: "2:4"  # e.g., "2:4" for 2:4 sparsity pattern
   
   distillation:
     enabled: false
     teacher_model: "gpt2-medium"
     temperature: 2.0
-    alpha: 0.5
+    alpha: 0.5  # Weight for distillation loss
+    selective_distillation: false  # Whether to distill only specific layers
+    target_layers: []  # Layers to distill if selective_distillation is true
+
+# Inference optimization configuration
+inference_optimization:
+  # General inference settings
+  dtype: "float16"  # Options: float32, float16, bfloat16
+  device: "cuda"
+  compile: false  # Whether to use torch.compile
+  optimize_memory: true  # Whether to optimize memory usage
+  
+  # KV cache management
+  kv_cache:
+    enabled: true
+    max_cache_size: null  # In tokens, null means no limit
+    pruning_strategy: "sliding_window"  # Options: sliding_window, token_drop
+    window_size: 2048  # Size of sliding window
+    token_drop_rate: 0.5  # Rate of tokens to drop when pruning
+    disk_offload: false  # Whether to offload KV cache to disk
+  
+  # Continuous batching for efficient token generation
+  continuous_batching:
+    enabled: false
+    max_batch_size: 32
+    max_waiting_tokens: 8192
+    max_active_requests: 256
+    batch_timeout: 0.1  # seconds
+    prefill_chunk_size: 2048
+    streaming: false
+    yield_frequency: 1  # tokens
+  
+  # Speculative decoding with a smaller model
+  speculative_decoding:
+    enabled: false
+    draft_model: null  # Path to smaller draft model
+    num_speculative_tokens: 4
+  
+  # Beam search settings
+  beam_search:
+    enabled: false
+    num_beams: 4
+    length_penalty: 1.0
+    early_stopping: true  # Options: true, false, never
+    num_return_sequences: 1
+    beam_group_size: 1  # For diverse beam search
+    diversity_penalty: 0.0  # For diverse beam search
+  
+  # Batching strategy
+  batching_strategy:
+    type: "static"  # Options: static, dynamic, adaptive
+    max_tokens_per_batch: 4096
+    max_sequences_per_batch: 32
+    optimal_token_length: 2048  # Ideal token length for batching
+  
+  # Optimized sampling strategies
+  sampling:
+    top_k: 50
+    top_p: 0.9
+    temperature: 1.0
+    repetition_penalty: 1.1
+    typical_p: null  # For typical sampling
+    eps: 1e-5
+    eta_cutoff: null  # For locally typical sampling
+    guidance_scale: null  # For classifier-free guidance
+    frequency_penalty: 0.0
+    presence_penalty: 0.0
+  
+  # Cache management for repeated prompts
+  prompt_caching:
+    enabled: false
+    max_cache_size: 100  # Number of prompts to cache
+    expiration_time: 3600  # In seconds (1 hour)
 
 # Evaluation configuration
 evaluation:
@@ -323,14 +634,33 @@ evaluation:
     - "accuracy"
     - "bleu"
     - "rouge"
+    - "exact_match"
+    - "precision"
+    - "recall"
+    - "f1"
+    - "meteor"
+    - "bertscore"
+    - "code_execution"  # For code generation tasks
+  
+  code_evaluation:
+    enabled: false
+    task_type: "humaneval"  # Options: humaneval, mbpp, apps
+    time_limit: 10  # In seconds
+    memory_limit: 1024  # In MB
+    use_docker: true
   
   generation:
     max_length: 128
+    min_length: 1
     num_beams: 4
     temperature: 1.0
     top_p: 0.9
     top_k: 50
     do_sample: true
+    repetition_penalty: 1.1
+    no_repeat_ngram_size: 0
+    early_stopping: true
+    max_time: null  # Maximum time in seconds for generation
 
 # Logging configuration
 logging:
