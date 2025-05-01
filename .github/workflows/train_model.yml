@@ -1,0 +1,241 @@
+name: Train and Test Model
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      train_full:
+        description: 'Run full training pipeline'
+        required: false
+        default: 'false'
+      push_to_hub:
+        description: 'Push model to HuggingFace Hub'
+        required: false
+        default: 'false'
+      stage:
+        description: 'Training stage to run'
+        required: false
+        default: 'finetune'
+      batch_size:
+        description: 'Batch size'
+        required: false
+        default: '8'
+      epochs:
+        description: 'Number of epochs'
+        required: false
+        default: '1'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+    
+    - name: Run tests
+      run: |
+        pytest -xvs --cov=src tests/
+
+  quickrun:
+    runs-on: ubuntu-latest
+    needs: test
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.train_full == 'false' }}
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Verify training script (CPU only, small model)
+      run: |
+        # Create tiny test config for verification
+        cat > config/ci_test_config.yaml << EOF
+        project_name: "transformer_model_ci_test"
+        output_dir: "./output_ci"
+        seed: 42
+        model:
+          type: "decoder_only_transformer"
+          size: "small"
+          sizes:
+            small:
+              n_layers: 2
+              n_heads: 2
+              d_model: 128
+              d_ff: 512
+              max_seq_length: 128
+          dropout: 0.1
+          attention:
+            causal: true
+            rotary_embedding: true
+        tokenizer:
+          type: "huggingface"
+          name: "gpt2"
+          vocab_size: 50257
+          max_length: 128
+        training:
+          active_stage: "test_run"
+          stages:
+            - name: "test_run"
+              epochs: 1
+              datasets:
+                - name: "imdb"
+                  split: "train"
+                  streaming: false
+                  max_samples: 100
+                - name: "imdb"
+                  split: "test"
+                  streaming: false
+                  max_samples: 20
+              learning_rate:
+                initial: 5.0e-5
+                min: 1.0e-6
+                schedule: "linear"
+                warmup_steps: 10
+          optimizer:
+            name: "adamw"
+            weight_decay: 0.01
+          mixed_precision: "no"
+          gradient_clipping: 1.0
+          checkpointing:
+            save_steps: 50
+            keep_last_n: 1
+          evaluation:
+            eval_steps: 50
+        data_processing:
+          batching:
+            train_batch_size: 4
+            eval_batch_size: 4
+            gradient_accumulation_steps: 1
+        evaluation:
+          metrics:
+            - "loss"
+            - "accuracy"
+          generation:
+            max_length: 32
+            num_beams: 2
+            temperature: 1.0
+        EOF
+        
+        # Run training verification
+        python train_model.py --config config/ci_test_config.yaml
+
+  train:
+    runs-on: self-hosted
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.train_full == 'true' }}
+    needs: test
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: Login to Hugging Face Hub
+      if: ${{ github.event.inputs.push_to_hub == 'true' }}
+      run: |
+        pip install huggingface_hub
+        python -c "from huggingface_hub import login; login('${{ secrets.HF_TOKEN }}')"
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    
+    - name: Train model
+      run: |
+        python train_model.py \
+          --config config/training_config.yaml \
+          --stage ${{ github.event.inputs.stage }} \
+          --batch_size ${{ github.event.inputs.batch_size }} \
+          --epochs ${{ github.event.inputs.epochs }} \
+          --output_dir "./output_${{ github.event.inputs.stage }}" \
+          --fp16 \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--push_to_hub' || '' }} \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--hub_model_id' || '' }} ${{ github.event.inputs.push_to_hub == 'true' && format('{0}/{1}-{2}', github.repository_owner, github.repository, github.event.inputs.stage) || '' }} \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--hf_token' || '' }} ${{ github.event.inputs.push_to_hub == 'true' && secrets.HF_TOKEN || '' }}
+    
+    - name: Upload model artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: model-${{ github.event.inputs.stage }}
+        path: ./output_${{ github.event.inputs.stage }}
+        retention-days: 5
+
+  train-with-peft:
+    runs-on: self-hosted
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.train_full == 'true' }}
+    needs: test
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install bitsandbytes
+    
+    - name: Login to Hugging Face Hub
+      if: ${{ github.event.inputs.push_to_hub == 'true' }}
+      run: |
+        pip install huggingface_hub
+        python -c "from huggingface_hub import login; login('${{ secrets.HF_TOKEN }}')"
+      env:
+        HF_TOKEN: ${{ secrets.HF_TOKEN }}
+    
+    - name: Train model with LoRA
+      run: |
+        python train_model.py \
+          --config config/training_config.yaml \
+          --stage ${{ github.event.inputs.stage }} \
+          --batch_size ${{ github.event.inputs.batch_size }} \
+          --epochs ${{ github.event.inputs.epochs }} \
+          --output_dir "./output_${{ github.event.inputs.stage }}_lora" \
+          --fp16 \
+          --peft \
+          --peft_method lora \
+          --lora_r 16 \
+          --lora_alpha 32 \
+          --lora_target_modules "q_proj,v_proj,k_proj,o_proj" \
+          --merge_lora_weights \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--push_to_hub' || '' }} \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--hub_model_id' || '' }} ${{ github.event.inputs.push_to_hub == 'true' && format('{0}/{1}-{2}-lora', github.repository_owner, github.repository, github.event.inputs.stage) || '' }} \
+          ${{ github.event.inputs.push_to_hub == 'true' && '--hf_token' || '' }} ${{ github.event.inputs.push_to_hub == 'true' && secrets.HF_TOKEN || '' }}
+    
+    - name: Upload model artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: model-${{ github.event.inputs.stage }}-lora
+        path: ./output_${{ github.event.inputs.stage }}_lora
+        retention-days: 5

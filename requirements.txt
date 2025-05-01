@@ -8,6 +8,7 @@ optimum>=1.8.0
 onnx>=1.13.0
 onnxruntime>=1.14.0
 huggingface_hub>=0.16.0
+safetensors>=0.3.1
 
 # Data processing
 nltk>=3.8.0
@@ -16,6 +17,16 @@ pandas>=1.5.0
 numpy>=1.23.0
 pyyaml>=6.0
 tqdm>=4.65.0
+
+# Model export and conversion tools
+coremltools>=6.3.0; platform_system=="Darwin"
+onnx2torch>=1.5.2
+onnxsim>=0.4.21
+sentencepiece>=0.1.99
+protobuf>=3.20.0,<4.0.0
+# optimum-onnxruntime removed due to compatibility issues
+torchvision>=0.14.0
+nvitop>=1.0.0; platform_system!="Darwin"
 
 # API and Web Services
 flask>=2.2.3
@@ -29,11 +40,6 @@ python-multipart>=0.0.6
 waitress>=2.1.2  # For serving Flask app on free tier
 websockets>=11.0.2
 httpx>=0.24.0
-
-# Model conversion tools
-coremltools>=6.3.0; platform_system=="Darwin"
-onnx2torch>=1.5.2
-onnxsim>=0.4.21
 
 # Distributed task processing
 celery>=5.2.7
@@ -60,3 +66,11 @@ pytest>=7.3.1
 black>=23.3.0
 isort>=5.12.0
 mypy>=1.2.0
+
+# Kaggle integration
+kaggle>=1.5.12
+
+# TensorFlow (optional, used for TFLite export)
+tensorflow>=2.10.0,<2.13.0; platform_system!="Darwin" or platform_machine!="arm64"
+tensorflow-macos>=2.10.0,<2.13.0; platform_system=="Darwin" and platform_machine=="arm64"
+tensorflow-metal>=0.7.0; platform_system=="Darwin" and platform_machine=="arm64"

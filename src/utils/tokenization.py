@@ -521,6 +521,79 @@ def create_tokenizer(
         raise ValueError(f"Unknown tokenizer type: {tokenizer_type}")
 
 
+def get_tokenizer(config: Dict[str, Any]) -> Union[Tokenizer, Any]:
+    """
+    Get a tokenizer based on configuration.
+    
+    Args:
+        config: Tokenizer configuration dictionary
+        
+    Returns:
+        Tokenizer instance
+    """
+    tokenizer_type = config.get("type", "").lower()
+    
+    # Handle HuggingFace tokenizers
+    if tokenizer_type == "huggingface":
+        try:
+            from transformers import AutoTokenizer
+            
+            # Get the tokenizer name
+            name = config.get("name", "gpt2")
+            
+            # Optional parameters
+            use_fast = config.get("use_fast", True)
+            max_length = config.get("max_length", 1024)
+            padding_side = config.get("padding_side", "right")
+            truncation_side = config.get("truncation_side", "right")
+            
+            # Create tokenizer
+            tokenizer = AutoTokenizer.from_pretrained(
+                name,
+                use_fast=use_fast,
+                model_max_length=max_length
+            )
+            
+            # Set padding and truncation sides
+            tokenizer.padding_side = padding_side
+            tokenizer.truncation_side = truncation_side
+            
+            # Ensure padding token is set
+            if tokenizer.pad_token is None:
+                if tokenizer.eos_token is not None:
+                    tokenizer.pad_token = tokenizer.eos_token
+                else:
+                    # Set default padding token
+                    tokenizer.pad_token = tokenizer.eos_token = "</s>"
+            
+            # Add BOS/EOS tokens if specified
+            if config.get("add_bos_token", False) and tokenizer.bos_token is None:
+                tokenizer.bos_token = "<s>"
+            
+            if config.get("add_eos_token", False) and tokenizer.eos_token is None:
+                tokenizer.eos_token = "</s>"
+            
+            logger.info(f"Loaded HuggingFace tokenizer: {name}")
+            return tokenizer
+        
+        except ImportError:
+            logger.warning("transformers not installed. Falling back to basic tokenizer.")
+            return create_tokenizer("bpe", vocab_size=config.get("vocab_size", 50257))
+    
+    # Our own tokenizer implementations
+    elif tokenizer_type in ["bpe", "tiktoken"]:
+        return create_tokenizer(
+            tokenizer_type=tokenizer_type,
+            vocab_size=config.get("vocab_size", 50257),
+            encoding_name=config.get("encoding_name", "cl100k_base")
+        )
+    
+    # Handle unknown tokenizer types
+    else:
+        logger.warning(f"Unknown tokenizer type: {tokenizer_type}. Falling back to BPE tokenizer.")
+        return create_tokenizer("bpe", vocab_size=config.get("vocab_size", 50257))
+
+
 # Example usage
 if __name__ == "__main__":
     # Set up logging

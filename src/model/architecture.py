@@ -614,67 +614,214 @@ class TransformerModel(nn.Module):
         
         return logits
     
-    def generate(
+    def prepare_inputs_for_generation(
         self,
-        input_ids: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        max_new_tokens: int = 20,
-        temperature: float = 1.0,
-        do_sample: bool = False,
-        top_k: Optional[int] = None,
-        top_p: Optional[float] = None,
-        repetition_penalty: float = 1.0,
-        pad_token_id: int = 0,
-        eos_token_id: Optional[int] = None
-    ) -> torch.Tensor:
+        input_ids: torch.LongTensor,
+        past_key_values: Optional[List[Tuple[torch.Tensor]]] = None,
+        attention_mask: Optional[torch.LongTensor] = None,
+        position_ids: Optional[torch.LongTensor] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
         """
-        Generate text using the model.
+        Prepare inputs for efficient text generation.
         
         Args:
-            input_ids: Input token IDs of shape [batch_size, seq_len]
-            attention_mask: Optional attention mask of shape [batch_size, seq_len]
-            max_new_tokens: Maximum number of new tokens to generate
-            temperature: Sampling temperature
-            do_sample: Whether to use sampling
-            top_k: Number of highest probability tokens to keep for top-k sampling
-            top_p: Cumulative probability threshold for top-p sampling
-            repetition_penalty: Penalty for repeating tokens
-            pad_token_id: ID of the padding token
-            eos_token_id: ID of the end-of-sequence token
+            input_ids: Input token IDs
+            past_key_values: Past key values for fast inference
+            attention_mask: Attention mask
+            position_ids: Position IDs
+            **kwargs: Additional keyword arguments
             
         Returns:
-            Generated token IDs of shape [batch_size, seq_len + max_new_tokens]
+            Dict of model inputs
         """
-        batch_size, seq_len = input_ids.shape
+        # Only last token for input_ids if using past key values
+        if past_key_values is not None:
+            input_ids = input_ids[:, -1].unsqueeze(-1)
+            
+            # Position IDs for the last token
+            if position_ids is not None:
+                position_ids = position_ids[:, -1].unsqueeze(-1)
         
-        # Create output tensor
-        generated = input_ids.clone()
-        
+        # Prepare position IDs if not provided
+        if position_ids is None:
+            # Create position IDs accounting for past tokens
+            past_length = 0
+            if past_key_values is not None:
+                past_length = past_key_values[0][0].size(-2)
+                
+            position_ids = torch.arange(
+                past_length, past_length + input_ids.size(-1),
+                dtype=torch.long, device=input_ids.device
+            )
+            position_ids = position_ids.unsqueeze(0).expand_as(input_ids)
+            
         # Create attention mask if not provided
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         
-        # Generate tokens one by one
-        for _ in range(max_new_tokens):
-            # Get the last tokens up to the maximum sequence length
-            curr_input_ids = generated[:, -self.max_position_embeddings:] if generated.size(1) > self.max_position_embeddings else generated
-            curr_attention_mask = attention_mask[:, -self.max_position_embeddings:] if attention_mask.size(1) > self.max_position_embeddings else attention_mask
+        return {
+            "input_ids": input_ids,
+            "position_ids": position_ids,
+            "attention_mask": attention_mask,
+            "past_key_values": past_key_values,
+            "use_cache": kwargs.get("use_cache", self.config.use_cache),
+        }
+    
+    def generate(
+        self,
+        input_ids: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None,
+        max_length: int = 20,
+        min_length: int = 0,
+        temperature: float = 1.0,
+        do_sample: bool = False,
+        top_k: Optional[int] = 50,
+        top_p: Optional[float] = 0.9,
+        repetition_penalty: float = 1.0,
+        use_cache: Optional[bool] = None,
+        num_return_sequences: int = 1,
+        pad_token_id: Optional[int] = None,
+        eos_token_id: Optional[int] = None,
+        output_attentions: bool = False,
+        output_hidden_states: bool = False,
+        return_dict_in_generate: bool = False,
+        **kwargs
+    ) -> Union[torch.Tensor, Dict[str, Any]]:
+        """
+        Generate text with advanced features.
+        
+        Args:
+            input_ids: Input token IDs of shape [batch_size, seq_len]
+            attention_mask: Optional attention mask of shape [batch_size, seq_len]
+            position_ids: Optional position IDs for positional embeddings
+            max_length: Maximum total length of generated sequence (including input)
+            min_length: Minimum length of generated sequence
+            temperature: Sampling temperature (lower = more deterministic)
+            do_sample: Whether to use sampling instead of greedy decoding
+            top_k: Number of highest probability tokens to keep for top-k sampling
+            top_p: Cumulative probability threshold for nucleus sampling
+            repetition_penalty: Penalty for repeating tokens (>1.0 reduces repetition)
+            use_cache: Whether to use KV cache for efficient generation
+            num_return_sequences: Number of sequences to return per input
+            pad_token_id: ID of the padding token
+            eos_token_id: ID of the end of sequence token
+            output_attentions: Whether to return attention weights
+            output_hidden_states: Whether to return hidden states
+            return_dict_in_generate: Whether to return dictionary instead of tensor
+            **kwargs: Additional arguments
+
+        Returns:
+            Generated token IDs of shape [batch_size, seq_len + new_tokens]
+            or dictionary with sequences and optional attention/hidden states
+        """
+        batch_size, input_seq_len = input_ids.shape
+        device = input_ids.device
+        use_cache = use_cache if use_cache is not None else getattr(self, 'use_cache', True)
+        max_gen_length = max(max_length, input_seq_len)
+        tokens_to_generate = max_gen_length - input_seq_len
+        
+        # If generating multiple sequences, repeat the input
+        if num_return_sequences > 1:
+            input_ids = input_ids.repeat(num_return_sequences, 1)
+            if attention_mask is not None:
+                attention_mask = attention_mask.repeat(num_return_sequences, 1)
+            if position_ids is not None:
+                position_ids = position_ids.repeat(num_return_sequences, 1)
+            batch_size = batch_size * num_return_sequences
             
+        # Create output tensor (will be expanded as we go)
+        generated_ids = input_ids.clone()
+        
+        # Prepare position IDs if needed
+        if position_ids is None and hasattr(self, 'pos_embedding'):
+            position_ids = torch.arange(input_seq_len, dtype=torch.long, device=device).unsqueeze(0).expand(batch_size, -1)
+            
+        # Create attention mask if not provided
+        if attention_mask is None:
+            attention_mask = torch.ones_like(input_ids)
+        
+        # Handle KV cache for efficient generation
+        past_key_values = None
+        
+        # Track unfinished sequences
+        if eos_token_id is not None:
+            unfinished_sequences = torch.ones(batch_size, 1, dtype=torch.long, device=device)
+            
+        # Initialize outputs for return_dict_in_generate
+        if return_dict_in_generate:
+            scores = () if do_sample else None
+            attentions = () if output_attentions else None
+            hidden_states = () if output_hidden_states else None
+            
+        # Set model to evaluation mode
+        self.eval()
+        
+        # Generate tokens one by one
+        for _ in range(tokens_to_generate):
+            # Prepare inputs - use full sequence or last token depending on whether cache is used
+            if use_cache and past_key_values is not None:
+                # Use only the last token and cache for efficiency
+                curr_ids = generated_ids[:, -1].unsqueeze(-1)
+                curr_mask = attention_mask
+                curr_pos_ids = position_ids[:, -1].unsqueeze(-1) if position_ids is not None else None
+            else:
+                # Limit to maximum context window if needed
+                effective_limit = self.max_position_embeddings if hasattr(self, 'max_position_embeddings') else 2048
+                if generated_ids.size(1) > effective_limit:
+                    curr_ids = generated_ids[:, -effective_limit:]
+                    curr_mask = attention_mask[:, -effective_limit:] if attention_mask is not None else None
+                    curr_pos_ids = position_ids[:, -effective_limit:] if position_ids is not None else None
+                else:
+                    curr_ids = generated_ids
+                    curr_mask = attention_mask
+                    curr_pos_ids = position_ids
+                    
             # Forward pass
             with torch.no_grad():
-                logits = self.forward(curr_input_ids, curr_attention_mask)
+                if use_cache:
+                    outputs = self.forward(
+                        input_ids=curr_ids,
+                        attention_mask=curr_mask,
+                        position_ids=curr_pos_ids,
+                        past_key_values=past_key_values,
+                        use_cache=True,
+                        output_attentions=output_attentions,
+                        output_hidden_states=output_hidden_states,
+                        return_dict=True
+                    )
+                    logits = outputs["logits"]
+                    if use_cache:
+                        past_key_values = outputs["past_key_values"]
+                    
+                    # Save outputs for return_dict_in_generate
+                    if return_dict_in_generate:
+                        if output_hidden_states:
+                            hidden_states = hidden_states + (outputs.get("hidden_states"),)
+                        if output_attentions:
+                            attentions = attentions + (outputs.get("attentions"),)
+                else:
+                    # Use simpler forward pass signature when not using cache
+                    logits = self.forward(curr_ids, curr_mask)
+                    if isinstance(logits, dict):
+                        logits = logits["logits"]
             
-            # Get the next token logits
+            # Get next token logits (last position in sequence)
             next_token_logits = logits[:, -1, :]
             
-            # Apply temperature
-            if temperature > 0:
+            # Apply min_length constraint
+            if min_length > 0 and generated_ids.size(1) - input_seq_len < min_length and eos_token_id is not None:
+                next_token_logits[:, eos_token_id] = -float("inf")
+            
+            # Apply temperature scaling
+            if temperature > 0 and temperature != 1.0:
                 next_token_logits = next_token_logits / temperature
             
             # Apply repetition penalty
             if repetition_penalty > 1.0:
                 for i in range(batch_size):
-                    for token_id in set(generated[i].tolist()):
+                    for token_id in set(generated_ids[i].tolist()):
                         next_token_logits[i, token_id] /= repetition_penalty
             
             # Apply top-k filtering
@@ -699,110 +846,255 @@ class TransformerModel(nn.Module):
                     indices_to_remove = sorted_indices[i][sorted_indices_to_remove[i]]
                     next_token_logits[i, indices_to_remove] = float('-inf')
             
+            # Save scores for return_dict_in_generate
+            if return_dict_in_generate and do_sample:
+                scores = scores + (next_token_logits,)
+            
             # Sample or greedy decoding
             if do_sample:
                 probs = F.softmax(next_token_logits, dim=-1)
-                next_token = torch.multinomial(probs, num_samples=1)
+                next_tokens = torch.multinomial(probs, num_samples=1)
             else:
-                next_token = torch.argmax(next_token_logits, dim=-1, keepdim=True)
+                next_tokens = torch.argmax(next_token_logits, dim=-1, keepdim=True)
             
-            # Append the next token
-            generated = torch.cat([generated, next_token], dim=1)
+            # Append the new tokens
+            generated_ids = torch.cat([generated_ids, next_tokens], dim=1)
             
-            # Check if all sequences have reached the EOS token
-            if eos_token_id is not None and (next_token == eos_token_id).all():
-                break
+            # Update attention mask for new token
+            if attention_mask is not None:
+                attention_mask = torch.cat([attention_mask, torch.ones_like(next_tokens)], dim=1)
+            
+            # Update position IDs for next token if they're being used
+            if position_ids is not None:
+                new_position_ids = position_ids[:, -1:] + 1
+                position_ids = torch.cat([position_ids, new_position_ids], dim=1)
+            
+            # Check if any sequences have finished
+            if eos_token_id is not None:
+                # Update which sequences are still unfinished
+                unfinished_sequences = unfinished_sequences.mul(
+                    (next_tokens != eos_token_id).long()
+                )
+                
+                # Stop when all sequences are finished
+                if unfinished_sequences.max() == 0:
+                    break
         
-        return generated
+        # Return generated sequences with optional extras
+        if return_dict_in_generate:
+            return {
+                "sequences": generated_ids,
+                "scores": scores,
+                "attentions": attentions,
+                "hidden_states": hidden_states
+            }
+        
+        return generated_ids
     
-    def save_pretrained(self, save_directory: str):
+    def _reorder_cache(
+        self,
+        past_key_values: List[Tuple[torch.Tensor]], 
+        beam_idx: torch.Tensor
+    ) -> List[Tuple[torch.Tensor]]:
         """
-        Save the model to a directory.
+        Reorder cached past key values for beam search.
         
         Args:
-            save_directory: Directory to save the model
+            past_key_values: Past key values
+            beam_idx: Indices for beam reordering
+            
+        Returns:
+            Reordered past key values
+        """
+        # If using key-value cache with beam search, we need to reorder the cache
+        # for the selected beam indices when doing beam search
+        return [
+            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) 
+                  for past_state in layer_past)
+            for layer_past in past_key_values
+        ]
+    
+    def save_pretrained(self, save_directory: str, **kwargs) -> None:
+        """
+        Save model and tokenizer to a directory.
+        
+        Args:
+            save_directory: Directory to save to
+            **kwargs: Additional arguments
         """
         os.makedirs(save_directory, exist_ok=True)
+        
+        # Save model configuration
+        config_path = os.path.join(save_directory, "config.json")
+        with open(config_path, "w", encoding="utf-8") as f:
+            # Convert config to dict and save as JSON
+            config_dict = self.config.to_dict()
+            json.dump(config_dict, f, indent=2, ensure_ascii=False)
         
         # Save model weights
         model_path = os.path.join(save_directory, "pytorch_model.bin")
         torch.save(self.state_dict(), model_path)
         
-        # Save configuration
-        config = {
-            "vocab_size": self.vocab_size,
-            "hidden_size": self.hidden_size,
-            "num_hidden_layers": self.num_hidden_layers,
-            "num_attention_heads": self.num_attention_heads,
-            "intermediate_size": self.intermediate_size,
-            "hidden_dropout_prob": self.hidden_dropout_prob,
-            "attention_probs_dropout_prob": self.attention_probs_dropout_prob,
-            "max_position_embeddings": self.max_position_embeddings,
-            "initializer_range": self.initializer_range,
-            "layer_norm_eps": self.layer_norm_eps,
-            "use_cache": self.use_cache,
-            "use_rotary_embeddings": self.use_rotary_embeddings,
-            "causal": self.causal
-        }
-        
-        config_path = os.path.join(save_directory, "config.json")
-        with open(config_path, "w") as f:
-            json.dump(config, f, indent=2)
+        logger.info(f"Model saved to {save_directory}")
     
     @classmethod
-    def from_pretrained(cls, pretrained_model_path: str):
+    def from_pretrained(cls, pretrained_model_name_or_path: str, **kwargs):
         """
-        Load a model from a pretrained model path.
+        Load model from pretrained weights.
         
         Args:
-            pretrained_model_path: Path to the pretrained model
+            pretrained_model_name_or_path: Path to pretrained model or model name
+            **kwargs: Additional arguments
             
         Returns:
             Loaded model
         """
-        # Load configuration
-        config_path = os.path.join(pretrained_model_path, "config.json")
-        with open(config_path, "r") as f:
-            config = json.load(f)
-        
-        # Create model
-        model = cls(**config)
-        
-        # Load weights
-        model_path = os.path.join(pretrained_model_path, "pytorch_model.bin")
-        model.load_state_dict(torch.load(model_path, map_location="cpu"))
-        
-        return model
-    
-    def to_torchscript(self, file_path: Optional[str] = None):
+        # Handle local paths
+        if os.path.isdir(pretrained_model_name_or_path):
+            # Load configuration
+            config_path = os.path.join(pretrained_model_name_or_path, "config.json")
+            if os.path.exists(config_path):
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config_dict = json.load(f)
+                config = ModelConfig(**config_dict)
+            else:
+                config = None
+                
+            # Load model weights
+            model_path = os.path.join(pretrained_model_name_or_path, "pytorch_model.bin")
+            if os.path.exists(model_path):
+                state_dict = torch.load(model_path, map_location="cpu")
+            else:
+                raise ValueError(f"Model weights not found at {model_path}")
+                
+            # Create model instance
+            model = cls(config=config, **kwargs)
+            
+            # Load state dict
+            model.load_state_dict(state_dict)
+            
+            return model
+        else:
+            # For remote models, would need to implement downloading logic
+            raise NotImplementedError(f"Loading from remote location not implemented: {pretrained_model_name_or_path}")
+            
+    def to_export_format(self, export_format: str = "onnx", **kwargs):
         """
-        Convert the model to TorchScript format.
+        Convert model to deployable format.
         
         Args:
-            file_path: Path to save the TorchScript model
+            export_format: Format to export to (onnx, torchscript, etc.)
+            **kwargs: Additional format-specific arguments
             
         Returns:
-            TorchScript model
+            Exported model or path to exported model
         """
-        # Set model to evaluation mode
-        self.eval()
-        
-        # Create example inputs
-        example_input_ids = torch.ones(1, self.max_position_embeddings, dtype=torch.long)
-        example_attention_mask = torch.ones(1, self.max_position_embeddings, dtype=torch.long)
-        
-        # Trace the model
-        with torch.no_grad():
-            traced_model = torch.jit.trace(
-                self,
-                (example_input_ids, example_attention_mask)
-            )
-        
-        # Save the model if file_path is provided
-        if file_path:
-            traced_model.save(file_path)
-        
-        return traced_model
+        if export_format.lower() == "onnx":
+            try:
+                import onnx
+                import onnxruntime
+                import torch.onnx
+                
+                # Set model to evaluation mode
+                self.eval()
+                
+                # Create dummy input
+                batch_size = kwargs.get("batch_size", 1)
+                seq_length = kwargs.get("seq_length", 8)
+                dummy_input = {
+                    "input_ids": torch.ones(batch_size, seq_length, dtype=torch.long),
+                    "attention_mask": torch.ones(batch_size, seq_length, dtype=torch.long)
+                }
+                
+                # Export path
+                output_path = kwargs.get("output_path", "model.onnx")
+                
+                # Export to ONNX
+                torch.onnx.export(
+                    self,
+                    (dummy_input,),
+                    output_path,
+                    opset_version=kwargs.get("opset_version", 12),
+                    input_names=["input_ids", "attention_mask"],
+                    output_names=["logits"],
+                    dynamic_axes={
+                        'input_ids': {0: 'batch_size', 1: 'sequence'},
+                        'attention_mask': {0: 'batch_size', 1: 'sequence'},
+                        'logits': {0: 'batch_size', 1: 'sequence'}
+                    }
+                )
+                
+                logger.info(f"Model exported to ONNX at {output_path}")
+                return output_path
+                
+            except ImportError:
+                raise ImportError("ONNX and ONNX Runtime are required for ONNX export")
+                
+        elif export_format.lower() == "torchscript":
+            # Export to TorchScript
+            self.eval()
+            
+            # Create dummy input
+            batch_size = kwargs.get("batch_size", 1)
+            seq_length = kwargs.get("seq_length", 8)
+            dummy_input = {
+                "input_ids": torch.ones(batch_size, seq_length, dtype=torch.long),
+                "attention_mask": torch.ones(batch_size, seq_length, dtype=torch.long)
+            }
+            
+            # Trace or script the model
+            traced_model = torch.jit.trace(self, (dummy_input,))
+            
+            # Save if output path provided
+            output_path = kwargs.get("output_path")
+            if output_path:
+                traced_model.save(output_path)
+                logger.info(f"Model exported to TorchScript at {output_path}")
+                
+            return traced_model
+            
+        elif export_format.lower() == "coreml":
+            try:
+                import coremltools as ct
+                
+                # Set model to evaluation mode
+                self.eval()
+                
+                # Create dummy input
+                batch_size = 1  # CoreML typically uses batch size 1
+                seq_length = kwargs.get("seq_length", 8)
+                dummy_input = {
+                    "input_ids": torch.ones(batch_size, seq_length, dtype=torch.long),
+                    "attention_mask": torch.ones(batch_size, seq_length, dtype=torch.long)
+                }
+                
+                # Convert to TorchScript first
+                traced_model = torch.jit.trace(self, (dummy_input,))
+                
+                # Convert to CoreML
+                mlmodel = ct.convert(
+                    traced_model,
+                    inputs=[
+                        ct.TensorType(name="input_ids", shape=dummy_input["input_ids"].shape),
+                        ct.TensorType(name="attention_mask", shape=dummy_input["attention_mask"].shape)
+                    ]
+                )
+                
+                # Save if output path provided
+                output_path = kwargs.get("output_path")
+                if output_path:
+                    mlmodel.save(output_path)
+                    logger.info(f"Model exported to CoreML at {output_path}")
+                    
+                return mlmodel
+                
+            except ImportError:
+                raise ImportError("CoreMLTools is required for CoreML export")
+        else:
+            raise ValueError(f"Unsupported export format: {export_format}")
+    
+    # The from_pretrained method is now implemented above with enhanced features
+    # The to_export_format method above supports TorchScript, ONNX, and CoreML export
     
     def prepare_for_export(self):
         """
@@ -1001,47 +1293,114 @@ class CustomTransformerModel(PreTrainedModel):
 # Factory function to create model from config
 def create_model_from_config(config: Dict) -> nn.Module:
     """
-    Create a model from configuration.
+    Create a model from configuration, supporting all modern architecture features.
     
     Args:
         config: Model configuration
         
     Returns:
-        Initialized model
+        Initialized model with the requested architecture
     """
     # Extract model configuration
     model_config = config['model']
     size = model_config['size']
     size_config = model_config['sizes'][size]
     
-    # Create Hugging Face compatible config
-    hf_config = ModelConfig(
-        vocab_size=config['tokenizer']['vocab_size'],
-        max_position_embeddings=size_config['max_seq_length'],
-        hidden_size=size_config['d_model'],
-        num_hidden_layers=size_config['n_layers'],
-        num_attention_heads=size_config['n_heads'],
-        intermediate_size=size_config['d_ff'],
-        hidden_dropout_prob=model_config['dropout'],
-        attention_probs_dropout_prob=model_config['dropout'],
-        use_rotary_embeddings=model_config['attention']['rotary_embedding'],
-        causal=model_config['attention']['causal']
-    )
+    # Extract architecture configuration
+    architecture_config = model_config.get('architecture', {})
     
-    # Create model
-    model = TransformerModel(
-        vocab_size=config['tokenizer']['vocab_size'],
-        hidden_size=size_config['d_model'],
-        num_hidden_layers=size_config['n_layers'],
-        num_attention_heads=size_config['n_heads'],
-        intermediate_size=size_config['d_ff'],
-        hidden_dropout_prob=model_config['dropout'],
-        attention_probs_dropout_prob=model_config['dropout'],
-        max_position_embeddings=size_config['max_seq_length'],
-        initializer_range=model_config.get('initializer_range', 0.02),
-        use_rotary_embeddings=model_config['attention']['rotary_embedding'],
-        causal=model_config['attention']['causal']
-    )
+    # Create advanced ModelConfig with all modern features
+    model_config_params = {
+        # Basic model parameters
+        "vocab_size": config['tokenizer']['vocab_size'],
+        "max_position_embeddings": size_config['max_seq_length'],
+        "hidden_size": size_config['d_model'],
+        "num_hidden_layers": size_config['n_layers'],
+        "num_attention_heads": size_config['n_heads'],
+        "intermediate_size": size_config['d_ff'],
+        "hidden_dropout_prob": model_config['dropout'],
+        "attention_probs_dropout_prob": model_config['dropout'],
+        "initializer_range": model_config.get('initializer_range', 0.02),
+        "layer_norm_eps": model_config.get('layer_norm_eps', 1e-5),
+        
+        # Position embeddings - default to rotary if not specified
+        "position_embedding_type": architecture_config.get('position_embeddings', 
+                                   'rotary' if model_config['attention'].get('rotary_embedding', True) else 'learned'),
+        
+        # Attention settings
+        "causal": model_config['attention'].get('causal', True),
+        "attention_type": architecture_config.get('attention_type', 'mha'),  # mha, mqa, gqa
+        "kv_heads": architecture_config.get('kv_heads', None),  # For GQA, number of KV heads
+        
+        # Normalization and activation
+        "norm_type": architecture_config.get('norm_type', 'layer_norm'),  # layer_norm, rms_norm
+        "normalization_strategy": architecture_config.get('normalization_strategy', 'pre_norm'),  # pre_norm, post_norm
+        "activation_function": architecture_config.get('activation_function', 'gelu'),
+        
+        # Advanced features
+        "ffn_type": architecture_config.get('ffn_type', 'mlp'),  # mlp, swiglu, geglu
+        "use_bias": architecture_config.get('use_bias', True),
+        "drop_path_rate": architecture_config.get('drop_path_rate', 0.0),
+        
+        # Performance optimizations
+        "use_flash_attention": architecture_config.get('use_flash_attention', False),
+        "use_cache": model_config.get('use_cache', True),
+        "tie_word_embeddings": model_config.get('tie_word_embeddings', True),
+        
+        # Quantization
+        "quantization": model_config.get('quantization', None)
+    }
+    
+    # Create ModelConfig
+    hf_config = ModelConfig(**model_config_params)
+    
+    # Create TransformerModel with all modern features using our enhanced implementation
+    model = TransformerModel(config=hf_config)
+    
+    # Apply additional model initializations if specified 
+    if 'initialization' in architecture_config:
+        init_config = architecture_config['initialization']
+        method = init_config.get('method', 'default')
+        
+        if method == 'normal':
+            # Normal initialization with specified params
+            std = init_config.get('std', 0.02)
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    module.weight.data.normal_(mean=0.0, std=std)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+        
+        elif method == 'xavier_uniform':
+            # Xavier uniform initialization
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.xavier_uniform_(module.weight.data)
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+        
+        elif method == 'kaiming_normal':
+            # Kaiming normal initialization
+            for module in model.modules():
+                if isinstance(module, nn.Linear):
+                    nn.init.kaiming_normal_(module.weight.data, nonlinearity='relu')
+                    if module.bias is not None:
+                        module.bias.data.zero_()
+    
+    # Apply gradient checkpointing if requested
+    if model_config.get('gradient_checkpointing', False):
+        model.gradient_checkpointing_enable()
+    
+    # Apply pytorch 2.0 compilation if requested
+    if 'compile' in model_config and model_config['compile'].get('enabled', False):
+        try:
+            import torch._dynamo
+            mode = model_config['compile'].get('mode', 'default')
+            
+            logger.info(f"Applying torch.compile with mode: {mode}")
+            model = torch.compile(model, mode=mode)
+        except (ImportError, AttributeError):
+            logger.warning("PyTorch 2.0+ compilation not available. Skipping model compilation.")
     
     return model
 
