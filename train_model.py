@@ -1,4 +1,20 @@
+"""
+/**
+ * Copyright (c) [2025] Backdoor Software Inc.
+ *
+ * All rights reserved.
+ *
+ * This software is the confidential and proprietary information of Backdoor Software Inc.
+ * You may not disclose, reproduce, or distribute this software without the express written
+ * permission of Backdoor Software Inc.
+ *
+ * Created by: Backdoor Software Inc.
+ * Purpose: Activity Maintenance
+ */
+"""
 #!/usr/bin/env python
+
+
 """
 Main script for training AI models using the enhanced training pipeline.
 

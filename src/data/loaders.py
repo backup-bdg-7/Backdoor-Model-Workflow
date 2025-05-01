@@ -1,4 +1,19 @@
 """
+/**
+ * Copyright (c) [2025] Backdoor Software Inc.
+ *
+ * All rights reserved.
+ *
+ * This software is the confidential and proprietary information of Backdoor Software Inc.
+ * You may not disclose, reproduce, or distribute this software without the express written
+ * permission of Backdoor Software Inc.
+ *
+ * Created by: Backdoor Software Inc.
+ * Purpose: Activity Maintenance
+ */
+"""
+
+"""
 Dataset loading utilities for the AI model training workflow.
 This module provides functions to load, preprocess, and stream datasets from various sources.
 """

@@ -1,4 +1,19 @@
 """
+/**
+ * Copyright (c) [2025] Backdoor Software Inc.
+ *
+ * All rights reserved.
+ *
+ * This software is the confidential and proprietary information of Backdoor Software Inc.
+ * You may not disclose, reproduce, or distribute this software without the express written
+ * permission of Backdoor Software Inc.
+ *
+ * Created by: Backdoor Software Inc.
+ * Purpose: Activity Maintenance
+ */
+"""
+
+"""
 Helper utilities for model exporting in various formats.
 Provides simplified functions for exporting models to PyTorch, ONNX, CoreML, and other formats.
 """
