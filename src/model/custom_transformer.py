@@ -1,4 +1,19 @@
 """
+/**
+ * Copyright (c) [2025] Backdoor Software Inc.
+ *
+ * All rights reserved.
+ *
+ * This software is the confidential and proprietary information of Backdoor Software Inc.
+ * You may not disclose, reproduce, or distribute this software without the express written
+ * permission of Backdoor Software Inc.
+ *
+ * Created by: Backdoor Software Inc.
+ * Purpose: Activity Maintenance
+ */
+"""
+
+"""
 Custom transformer model implementation compatible with HuggingFace ecosystem.
 This module provides a transformer model that can be used with the HuggingFace ecosystem.
 """
