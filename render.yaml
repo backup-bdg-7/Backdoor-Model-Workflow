@@ -57,8 +57,9 @@ services:
         value: true
 
   # Frontend Service - Serves the web UI for interaction
-  - type: static
+  - type: web
     name: model-trainer-frontend
+    env: static
     plan: free
     buildCommand: cd app/frontend && npm install && npm run build
     staticPublishPath: ./app/frontend/build
