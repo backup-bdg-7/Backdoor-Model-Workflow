@@ -1,0 +1,163 @@
+datasets:
+  core_datasets:
+    - name: "nvidia/OpenCodeReasoning"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "code_reasoning"
+      weight: 1.0
+
+    - name: "openai/openai_humaneval"
+      streaming: false
+      max_samples: 1000
+      type: "huggingface"
+      task: "code_generation"
+      weight: 1.2
+
+    - name: "bigcode/the-stack"
+      streaming: true
+      max_samples: 10000
+      type: "huggingface"
+      task: "code_completion"
+      weight: 1.0
+
+    - name: "open-thoughts/OpenThoughts2-1M"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "thought_process"
+      weight: 0.8
+
+    - name: "xAI/TruthfulQA"
+      streaming: false
+      max_samples: 1000
+      type: "huggingface"
+      task: "qa"
+      weight: 1.0
+
+    - name: "HuggingFaceH4/instruction-dataset"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "instruction_following"
+      weight: 1.5
+
+    - name: "HuggingFaceH4/ultrachat_200k"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "dialogue"
+      weight: 1.2
+
+    - name: "Salesforce/dialogstudio"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "dialogue"
+      weight: 1.0
+
+    - name: "Anthropic/hh-rlhf"
+      streaming: true
+      max_samples: 5000
+      type: "huggingface"
+      task: "rlhf"
+      weight: 1.0
+
+  additional_datasets:
+    - name: "databricks/databricks-dolly-15k"
+      streaming: false
+      max_samples: 5000
+      type: "huggingface"
+      task: "instruction_following"
+      weight: 1.0
+
+    - name: "tatsu-lab/alpaca"
+      streaming: false
+      max_samples: 5000
+      type: "huggingface"
+      task: "instruction_following"
+      weight: 1.0
+
+    - name: "deepmind/mathematics"
+      streaming: false
+      max_samples: 3000
+      type: "huggingface"
+      task: "mathematics"
+      weight: 0.8
+
+error_handling:
+  fallbacks:
+    dataset_unavailable: "use_cached"
+
+training:
+  stages:
+    - name: "pretrain"
+      datasets:
+        - "bigcode/the-stack"
+        - "open-thoughts/OpenThoughts2-1M"
+        - "xAI/TruthfulQA"
+      epochs: 3
+      learning_rate:
+        initial: 5e-5
+        min: 1e-5
+        schedule: "linear"
+        warmup_steps: 500
+
+    - name: "finetune"
+      datasets:
+        - "databricks/databricks-dolly-15k"
+        - "tatsu-lab/alpaca"
+        - "HuggingFaceH4/instruction-dataset"
+      epochs: 2
+      learning_rate:
+        initial: 2e-5
+        min: 5e-6
+        schedule: "cosine"
+        warmup_steps: 200
+
+    - name: "dialogue_tune"
+      datasets:
+        - "HuggingFaceH4/ultrachat_200k"
+        - "Salesforce/dialogstudio"
+      epochs: 1
+      learning_rate:
+        initial: 1e-5
+        min: 1e-6
+        schedule: "cosine"
+        warmup_steps: 100
+
+    - name: "rlhf"
+      datasets:
+        - "Anthropic/hh-rlhf"
+      epochs: 1
+      learning_rate:
+        initial: 5e-6
+        min: 5e-7
+        schedule: "constant"
+        warmup_steps: 50
+
+output_dir: "/tmp/model-trainer/models"
+
+data_processing:
+  preprocessing:
+    normalize_unicode: true
+    normalize_whitespace: true
+    remove_html: true
+    min_length: 10
+    max_length: 8192
+  
+  augmentation:
+    enabled: false
+    techniques:
+      - name: "synonym_replacement"
+        probability: 0.1
+      - name: "random_insertion"
+        probability: 0.05
+      - name: "random_deletion"
+        probability: 0.05
+
+  batching:
+    train_batch_size: 8
+    eval_batch_size: 16
+    gradient_accumulation_steps: 4
+    dynamic_batching: true

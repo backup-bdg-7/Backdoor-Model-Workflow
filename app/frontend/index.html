@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Model Training Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-brain"></i>
+                <span>AI Trainer</span>
+            </div>
+            <nav>
+                <ul>
+                    <li class="active" data-page="dashboard">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <span>Dashboard</span>
+                    </li>
+                    <li data-page="training">
+                        <i class="fas fa-cogs"></i>
+                        <span>Training</span>
+                    </li>
+                    <li data-page="exports">
+                        <i class="fas fa-file-export"></i>
+                        <span>Exports</span>
+                    </li>
+                    <li data-page="datasets">
+                        <i class="fas fa-database"></i>
+                        <span>Datasets</span>
+                    </li>
+                    <li data-page="settings">
+                        <i class="fas fa-sliders-h"></i>
+                        <span>Settings</span>
+                    </li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="content">
+            <header>
+                <div class="header-left">
+                    <button id="sidebar-toggle">
+                        <i class="fas fa-bars"></i>
+                    </button>
+                    <h1 id="page-title">Dashboard</h1>
+                </div>
+                <div class="header-right">
+                    <div class="system-status">
+                        <span class="status-indicator" id="status-indicator"></span>
+                        <span id="status-text">System Status</span>
+                    </div>
+                </div>
+            </header>
+
+            <div class="pages">
+                <!-- Dashboard Page -->
+                <section id="dashboard" class="page active">
+                    <div class="stats-container">
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-tasks"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Active Jobs</h3>
+                                <p id="active-jobs-count">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Completed Jobs</h3>
+                                <p id="completed-jobs-count">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-download"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Exports</h3>
+                                <p id="exports-count">0</p>
+                            </div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-icon">
+                                <i class="fas fa-memory"></i>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Memory Usage</h3>
+                                <p id="memory-usage">0%</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section-title">
+                        <h2>Active Training Jobs</h2>
+                        <button class="refresh-btn" id="refresh-active-jobs">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="active-jobs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Last Update</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="no-active-jobs">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No active training jobs</p>
+                        </div>
+                    </div>
+
+                    <div class="section-title">
+                        <h2>Recent Exports</h2>
+                        <button class="refresh-btn" id="refresh-recent-exports">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="recent-exports-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Model</th>
+                                    <th>Format</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="no-recent-exports">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No recent exports</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Training Page -->
+                <section id="training" class="page">
+                    <div class="page-actions">
+                        <button class="primary-btn" id="new-training-btn">
+                            <i class="fas fa-plus"></i> Start New Training
+                        </button>
+                    </div>
+
+                    <div class="section-title">
+                        <h2>All Training Jobs</h2>
+                        <button class="refresh-btn" id="refresh-all-jobs">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="all-jobs-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Model Size</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Started</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="no-all-jobs">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No training jobs found</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Exports Page -->
+                <section id="exports" class="page">
+                    <div class="page-actions">
+                        <button class="primary-btn" id="new-export-btn">
+                            <i class="fas fa-plus"></i> Create New Export
+                        </button>
+                    </div>
+
+                    <div class="section-title">
+                        <h2>All Exports</h2>
+                        <button class="refresh-btn" id="refresh-all-exports">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="all-exports-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Model</th>
+                                    <th>Format</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="no-all-exports">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No exports found</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Datasets Page -->
+                <section id="datasets" class="page">
+                    <div class="section-title">
+                        <h2>Available Datasets</h2>
+                        <button class="refresh-btn" id="refresh-datasets">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="table-container">
+                        <table class="data-table" id="datasets-table">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Type</th>
+                                    <th>Streaming</th>
+                                    <th>Samples</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JavaScript -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="no-datasets">
+                            <i class="fas fa-info-circle"></i>
+                            <p>No datasets found</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Page -->
+                <section id="settings" class="page">
+                    <div class="settings-container">
+                        <div class="settings-group">
+                            <h2>Training Settings</h2>
+                            <div class="settings-item">
+                                <label for="max-memory">Max Memory Usage (MB)</label>
+                                <input type="number" id="max-memory" min="128" step="128" value="1024">
+                            </div>
+                            <div class="settings-item">
+                                <label for="default-model-size">Default Model Size</label>
+                                <select id="default-model-size">
+                                    <option value="small">Small</option>
+                                    <option value="medium">Medium</option>
+                                    <option value="large">Large</option>
+                                </select>
+                            </div>
+                            <div class="settings-item">
+                                <label for="default-batch-size">Default Batch Size</label>
+                                <input type="number" id="default-batch-size" min="1" step="1" value="8">
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <h2>Export Settings</h2>
+                            <div class="settings-item">
+                                <label for="default-export-format">Default Export Format</label>
+                                <select id="default-export-format">
+                                    <option value="flask">Flask</option>
+                                    <option value="coreml">CoreML</option>
+                                </select>
+                            </div>
+                            <div class="settings-item">
+                                <label>Quantization</label>
+                                <div class="toggle-switch">
+                                    <input type="checkbox" id="default-quantize">
+                                    <label for="default-quantize"></label>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="settings-group">
+                            <h2>System Settings</h2>
+                            <div class="settings-item">
+                                <label>Enable Real-time Updates</label>
+                                <div class="toggle-switch">
+                                    <input type="checkbox" id="enable-realtime" checked>
+                                    <label for="enable-realtime"></label>
+                                </div>
+                            </div>
+                            <div class="settings-item">
+                                <label for="update-interval">Update Interval (seconds)</label>
+                                <input type="number" id="update-interval" min="1" step="1" value="5">
+                            </div>
+                        </div>
+
+                        <div class="settings-actions">
+                            <button class="primary-btn" id="save-settings">Save Settings</button>
+                            <button class="secondary-btn" id="reset-settings">Reset to Default</button>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </main>
+
+        <!-- Training Details Modal -->
+        <div class="modal" id="training-details-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Training Details</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="training-status">
+                        <div class="status-header">
+                            <h3 id="training-id">Training ID: <span></span></h3>
+                            <div class="status-badge" id="training-status-badge">Running</div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress">
+                                <div class="progress-bar" id="training-progress-bar"></div>
+                            </div>
+                            <div class="progress-text" id="training-progress-text">0%</div>
+                        </div>
+                        <p class="status-message" id="training-status-message">Loading...</p>
+                    </div>
+
+                    <div class="metrics-section">
+                        <div class="section-title">
+                            <h3>Training Metrics</h3>
+                            <div class="chart-actions">
+                                <button class="chart-toggle active" data-chart="loss">Loss</button>
+                                <button class="chart-toggle" data-chart="lr">Learning Rate</button>
+                            </div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="metrics-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="training-details">
+                        <div class="details-item">
+                            <span class="detail-label">Model Size:</span>
+                            <span class="detail-value" id="detail-model-size">Small</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Datasets:</span>
+                            <span class="detail-value" id="detail-datasets">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Started:</span>
+                            <span class="detail-value" id="detail-started">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Elapsed:</span>
+                            <span class="detail-value" id="detail-elapsed">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Current Loss:</span>
+                            <span class="detail-value" id="detail-loss">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Learning Rate:</span>
+                            <span class="detail-value" id="detail-lr">-</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions" id="training-modal-actions">
+                        <button class="danger-btn" id="stop-training-btn">Stop Training</button>
+                        <button class="primary-btn" id="export-model-btn">Export Model</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Export Details Modal -->
+        <div class="modal" id="export-details-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Export Details</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="export-status">
+                        <div class="status-header">
+                            <h3 id="export-id">Export ID: <span></span></h3>
+                            <div class="status-badge" id="export-status-badge">Running</div>
+                        </div>
+                        <div class="progress-container">
+                            <div class="progress">
+                                <div class="progress-bar" id="export-progress-bar"></div>
+                            </div>
+                            <div class="progress-text" id="export-progress-text">0%</div>
+                        </div>
+                        <p class="status-message" id="export-status-message">Loading...</p>
+                    </div>
+
+                    <div class="export-details">
+                        <div class="details-item">
+                            <span class="detail-label">Model ID:</span>
+                            <span class="detail-value" id="detail-model-id">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Format:</span>
+                            <span class="detail-value" id="detail-format">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Quantized:</span>
+                            <span class="detail-value" id="detail-quantized">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">Created:</span>
+                            <span class="detail-value" id="detail-created">-</span>
+                        </div>
+                        <div class="details-item">
+                            <span class="detail-label">File Size:</span>
+                            <span class="detail-value" id="detail-size">-</span>
+                        </div>
+                    </div>
+
+                    <div class="modal-actions" id="export-modal-actions">
+                        <button class="primary-btn" id="download-export-btn" disabled>Download Export</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Training Modal -->
+        <div class="modal" id="new-training-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Start New Training</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-training-form">
+                        <div class="form-group">
+                            <label for="model-size">Model Size</label>
+                            <select id="model-size" required>
+                                <option value="small">Small</option>
+                                <option value="medium">Medium</option>
+                                <option value="large">Large</option>
+                            </select>
+                            <div class="form-help">
+                                <small>Small: 6 layers, 512 dim | Medium: 12 layers, 768 dim | Large: 24 layers, 1024 dim</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Datasets</label>
+                            <div class="datasets-selector" id="datasets-selector">
+                                <!-- Populated by JavaScript -->
+                                <div class="loading-placeholder">
+                                    <i class="fas fa-spinner fa-spin"></i> Loading available datasets...
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="epochs">Training Epochs</label>
+                                <input type="number" id="epochs" min="1" max="100" value="3" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="batch-size">Batch Size</label>
+                                <input type="number" id="batch-size" min="1" max="64" value="8" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="learning-rate">Learning Rate</label>
+                                <input type="number" id="learning-rate" min="0.00001" max="0.1" step="0.00001" value="0.00003" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="save-steps">Save Steps</label>
+                                <input type="number" id="save-steps" min="100" max="10000" step="100" value="1000" required>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="secondary-btn" id="cancel-training-btn">Cancel</button>
+                            <button type="submit" class="primary-btn">Start Training</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Export Modal -->
+        <div class="modal" id="new-export-modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Create New Export</h2>
+                    <button class="modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="new-export-form">
+                        <div class="form-group">
+                            <label for="export-model-id">Select Model</label>
+                            <select id="export-model-id" required>
+                                <!-- Populated by JavaScript -->
+                                <option value="" disabled selected>Select a model</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="export-format">Export Format</label>
+                            <select id="export-format" required>
+                                <option value="flask">Flask Application</option>
+                                <option value="coreml">Apple CoreML</option>
+                            </select>
+                            <div class="form-help">
+                                <small>Flask: For web applications | CoreML: For Apple devices</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="quantize">Quantization</label>
+                            <div class="toggle-switch">
+                                <input type="checkbox" id="quantize">
+                                <label for="quantize"></label>
+                            </div>
+                            <div class="form-help">
+                                <small>Reduces model size but might decrease accuracy slightly</small>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="optimization-level">Optimization Level</label>
+                            <select id="optimization-level">
+                                <option value="0">None (0)</option>
+                                <option value="1" selected>Basic (1)</option>
+                                <option value="2">Medium (2)</option>
+                                <option value="3">Maximum (3)</option>
+                            </select>
+                            <div class="form-help">
+                                <small>Higher optimization improves speed but may affect accuracy</small>
+                            </div>
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="button" class="secondary-btn" id="cancel-export-btn">Cancel</button>
+                            <button type="submit" class="primary-btn">Create Export</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

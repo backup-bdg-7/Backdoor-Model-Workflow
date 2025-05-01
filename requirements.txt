@@ -1,4 +1,4 @@
-# Core dependencies
+# Core ML dependencies
 torch>=1.13.0
 transformers>=4.30.0
 datasets>=2.10.0
@@ -16,17 +16,47 @@ numpy>=1.23.0
 pyyaml>=6.0
 tqdm>=4.65.0
 
-# Deployment
-flask>=2.0.1
+# API and Web Services
+flask>=2.2.3
 flask-cors>=3.0.10
+flask-restx>=1.1.0
 gunicorn>=20.1.0
+fastapi>=0.95.1
+uvicorn>=0.22.0
+pydantic>=1.10.7
+python-multipart>=0.0.6
+redis>=4.5.4
+socketio>=0.2.1
+websockets>=11.0.2
+httpx>=0.24.0
 
-# Visualization
+# Model conversion tools
+coremltools>=6.3.0; platform_system=="Darwin"
+onnx2torch>=1.5.2
+onnxsim>=0.4.21
+
+# Distributed task processing
+celery>=5.2.7
+rq>=1.13.0
+
+# Monitoring and visualization
+wandb>=0.15.0
 matplotlib>=3.7.0
 seaborn>=0.12.0
+dash>=2.9.3
+plotly>=5.14.1
 
-# Monitoring and logging
-wandb>=0.15.0
+# Storage and caching
+diskcache>=5.6.1
+requests>=2.28.2
+aiofiles>=23.1.0
 
-# Optional: Core ML support (macOS only)
-# coremltools>=6.2.0
+# Security and validation
+pyJWT>=2.6.0
+email-validator>=2.0.0
+
+# Testing and quality
+pytest>=7.3.1
+black>=23.3.0
+isort>=5.12.0
+mypy>=1.2.0
