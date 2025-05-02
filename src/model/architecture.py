@@ -489,6 +489,15 @@ class TransformerModel(nn.Module):
     during conversion.
     """
     
+    def gradient_checkpointing_enable(self):
+        """
+        Enable gradient checkpointing for memory-efficient training.
+        This reduces memory usage by recomputing intermediate activations
+        during the backward pass instead of storing them.
+        """
+        self._use_gradient_checkpointing = True
+        return self
+    
     def __init__(
         self,
         vocab_size: int = 50257,
@@ -635,9 +644,24 @@ class TransformerModel(nn.Module):
             pos_emb = self.pos_embedding(positions)
             x = x + pos_emb
         
-        # Apply transformer blocks
-        for block in self.blocks:
-            x = block(x, attention_mask)
+        # Apply transformer blocks with optional gradient checkpointing
+        if hasattr(self, '_use_gradient_checkpointing') and self._use_gradient_checkpointing and self.training:
+            # Custom function to create a forward function with only the inputs we need
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+                return custom_forward
+            
+            # Apply blocks with gradient checkpointing
+            for block in self.blocks:
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    x, attention_mask
+                )
+        else:
+            # Apply blocks normally
+            for block in self.blocks:
+                x = block(x, attention_mask)
         
         # Apply final normalization
         x = self.norm(x)
