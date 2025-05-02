@@ -341,7 +341,7 @@ class DecoderOnlyTransformer(nn.Module):
     
     def forward(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None) -> torch.Tensor:
         """
-        Forward pass for decoder-only transformer.
+        Forward pass for transformer model.
         
         Args:
             input_ids: Input token IDs of shape [batch_size, seq_len]
@@ -356,7 +356,7 @@ class DecoderOnlyTransformer(nn.Module):
         x = self.token_embedding(input_ids)
         
         # Add positional embeddings
-        if self.use_rotary:
+        if self.use_rotary_embeddings:
             # Rotary embeddings are applied in the attention module
             pass
         else:
@@ -365,9 +365,24 @@ class DecoderOnlyTransformer(nn.Module):
             pos_emb = self.pos_embedding(positions)
             x = x + pos_emb
         
-        # Apply transformer blocks
-        for block in self.blocks:
-            x = block(x, attention_mask)
+        # Apply transformer blocks with optional gradient checkpointing
+        if hasattr(self, '_use_gradient_checkpointing') and self._use_gradient_checkpointing and self.training:
+            # Custom function to create a forward function with only the inputs we need
+            def create_custom_forward(module):
+                def custom_forward(*inputs):
+                    return module(*inputs)
+                return custom_forward
+            
+            # Apply blocks with gradient checkpointing
+            for block in self.blocks:
+                x = torch.utils.checkpoint.checkpoint(
+                    create_custom_forward(block),
+                    x, attention_mask
+                )
+        else:
+            # Apply blocks normally
+            for block in self.blocks:
+                x = block(x, attention_mask)
         
         # Apply final normalization
         x = self.norm(x)
